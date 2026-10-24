@@ -1,0 +1,3 @@
+# data/cache/ — Downloaded OHLCV CSVs are stored here.
+# Run scripts/build_cache.py to populate this directory.
+# CSVs may be included in git (small enough) or excluded via .gitignore.

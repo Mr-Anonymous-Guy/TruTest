@@ -36,10 +36,12 @@
 
 ## Phase 2 – Pure logic in `core/` ⏱ 1.5 h
 
+- [x] `core/data.py` – cached CSV loader with DataQualityError and price validation
 - [x] `core/backtest.py` – pandas engine, signal shift, fees/slippage, Sharpe / maxDD / CAGR / trades
-- [x] `core/skeptic.py` – OOS split, param perturbation, cost 2x, Monte Carlo, verdict logic
-- [x] Unit tests: `tests/test_backtest.py`, `tests/test_skeptic.py` pass with synthetic data
-- [x] Run tests: `python -m pytest tests/ -v` (all passed)
+- [x] `core/skeptic.py` – OOS split, param perturbation, cost 2x, Monte Carlo baseline, verdict logic
+- [x] Unit tests: `tests/test_backtest.py`, `tests/test_data.py`, `tests/test_skeptic.py` (15/15 passing)
+- [x] Demo pair script: `scripts/demo_pair.py` producing `data/demo_pair.json` & `data/demo_pair_results.json`
+- [x] Core documentation: `core/README.md` for Phase 3 agent wiring
 
 ---
 

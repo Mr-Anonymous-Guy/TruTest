@@ -1,0 +1,138 @@
+{
+  "demo_a": {
+    "verdict": "Likely Overfit",
+    "tests": [
+      {
+        "name": "out_of_sample",
+        "passed": true,
+        "in_sample_sharpe": 0.033,
+        "oos_sharpe": 0.093,
+        "in_sample_cagr": -0.0055,
+        "oos_cagr": 0.0036,
+        "explanation": "OOS Sharpe is 0.09 (holds >= 50% of in-sample 0.03)."
+      },
+      {
+        "name": "parameter_perturbation",
+        "passed": false,
+        "pass_fraction": 0.417,
+        "total_neighbours": 12,
+        "worst_sharpe": -0.23,
+        "median_sharpe": 0.01,
+        "explanation": "Only 42% of neighbours held (needed 70%, worst collapsed to -0.23)."
+      },
+      {
+        "name": "cost_sensitivity",
+        "passed": false,
+        "cost_sharpe": 0.032,
+        "cost_cagr": -0.0052,
+        "explanation": "With 2x friction, Sharpe dropped to 0.03 and CAGR to -0.5%."
+      },
+      {
+        "name": "random_baseline",
+        "passed": false,
+        "percentile": 30.4,
+        "p95_sharpe": 0.624,
+        "mean_sharpe": 0.182,
+        "explanation": "Only beats 30.4% of 500 random baselines (needs >= 95.0%, 95th %ile was 0.62)."
+      }
+    ],
+    "base_metrics": {
+      "total_return": -0.013650178398846302,
+      "cagr": -0.0027982927203754615,
+      "sharpe": 0.04969552358999661,
+      "max_drawdown": 0.20846293462945567,
+      "trade_count": 4,
+      "exposure": 0.49271844660194175,
+      "win_rate": 0.25
+    },
+    "thresholds": {
+      "oos_split": 0.7,
+      "oos_min_sharpe_ratio": 0.5,
+      "perturb_pcts": [
+        -0.2,
+        -0.1,
+        0.1,
+        0.2
+      ],
+      "perturb_min_retention": 0.5,
+      "perturb_min_pass_fraction": 0.7,
+      "cost_multiplier": 2.0,
+      "cost_min_sharpe_ratio": 0.5,
+      "random_n": 500,
+      "random_percentile": 95,
+      "random_seed": 42,
+      "min_trades_warning": 8
+    },
+    "warnings": [
+      "Only 4 trades executed: statistical sample is low (recommended minimum: 8)."
+    ],
+    "disclaimer": "Educational only. 'Trustworthy' means the strategy survived these stress tests, not that it will make money in live trading. Survivorship bias and structural market regime changes are not fully captured by historical data."
+  },
+  "demo_b": {
+    "verdict": "Likely Overfit",
+    "tests": [
+      {
+        "name": "out_of_sample",
+        "passed": false,
+        "in_sample_sharpe": 0.554,
+        "oos_sharpe": -0.322,
+        "in_sample_cagr": 0.0785,
+        "oos_cagr": -0.051,
+        "explanation": "OOS Sharpe is -0.32 (degrades below 50% of in-sample 0.55)."
+      },
+      {
+        "name": "parameter_perturbation",
+        "passed": false,
+        "pass_fraction": 0.167,
+        "total_neighbours": 12,
+        "worst_sharpe": -0.136,
+        "median_sharpe": 0.014,
+        "explanation": "Only 17% of neighbours held (needed 70%, worst collapsed to -0.14)."
+      },
+      {
+        "name": "cost_sensitivity",
+        "passed": true,
+        "cost_sharpe": 0.309,
+        "cost_cagr": 0.0363,
+        "explanation": "With 2x friction (0.20% fee, 0.10% slip), Sharpe is 0.31 and CAGR is 3.6%."
+      },
+      {
+        "name": "random_baseline",
+        "passed": false,
+        "percentile": 83.6,
+        "p95_sharpe": 0.635,
+        "mean_sharpe": 0.068,
+        "explanation": "Only beats 83.6% of 500 random baselines (needs >= 95.0%, 95th %ile was 0.64)."
+      }
+    ],
+    "base_metrics": {
+      "total_return": 0.2652103619283148,
+      "cagr": 0.04912997731945712,
+      "sharpe": 0.3886252585175213,
+      "max_drawdown": 0.2047336890540311,
+      "trade_count": 20,
+      "exposure": 0.4886731391585761,
+      "win_rate": 0.35
+    },
+    "thresholds": {
+      "oos_split": 0.7,
+      "oos_min_sharpe_ratio": 0.5,
+      "perturb_pcts": [
+        -0.2,
+        -0.1,
+        0.1,
+        0.2
+      ],
+      "perturb_min_retention": 0.5,
+      "perturb_min_pass_fraction": 0.7,
+      "cost_multiplier": 2.0,
+      "cost_min_sharpe_ratio": 0.5,
+      "random_n": 500,
+      "random_percentile": 95,
+      "random_seed": 42,
+      "min_trades_warning": 8
+    },
+    "warnings": [],
+    "disclaimer": "Educational only. 'Trustworthy' means the strategy survived these stress tests, not that it will make money in live trading. Survivorship bias and structural market regime changes are not fully captured by historical data."
+  }
+}

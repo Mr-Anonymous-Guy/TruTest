@@ -1,0 +1,26 @@
+{
+  "demo_a": {
+    "ticker": "RELIANCE.NS",
+    "strategy": "ma_crossover",
+    "params": {
+      "fast": 50,
+      "slow": 200
+    },
+    "fee_pct": 0.1,
+    "slippage_pct": 0.05,
+    "start": "2021-10-25",
+    "end": "2026-10-23"
+  },
+  "demo_b": {
+    "ticker": "RELIANCE.NS",
+    "strategy": "ma_crossover",
+    "params": {
+      "fast": 23,
+      "slow": 35
+    },
+    "fee_pct": 0.1,
+    "slippage_pct": 0.05,
+    "start": "2021-10-25",
+    "end": "2026-10-23"
+  }
+}
