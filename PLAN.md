@@ -47,12 +47,15 @@
 
 ## Phase 3 – Add agents one at a time ⏱ 2 h
 
-- [x] `agents/parser_agent.py` – ASI:One LLM → StrategySpec JSON (with resilient heuristic fallback)
-- [x] `agents/data_agent.py` – DataRequest → PriceData (live/cache, report source)
-- [x] `agents/backtest_agent.py` – StrategySpec + PriceData → BacktestResult
-- [x] `agents/skeptic_agent.py` – BacktestResult + raw data → AuditReport
-- [x] Wire full pipeline through Orchestrator (`core/pipeline.py`)
-- [x] End-to-end test with a known strategy (e.g., SMA 50/200 cross on RELIANCE.NS, RSI on TCS.NS)
+- [x] `agents/models.py` – typed uagents message models (27.7 KB 5y payload, well within 1MB limit)
+- [x] `agents/data_agent.py` (port 8002) – live yfinance + local CSV fallback (`agents/data_source.py`)
+- [x] `agents/backtest_agent.py` (port 8003) – lookahead-free quantitative simulation engine
+- [x] `agents/skeptic_agent.py` (port 8004) – adversarial stress testing (0.03s Demo A / 0.04s Demo B)
+- [x] `agents/parser_agent.py` (port 8005) – ASI:One LLM API client + heuristic fallback (`agents/llm.py`)
+- [x] `agents/orchestrator.py` & `agents/pipeline.py` (port 8001) – 4-hop pipeline wired with per-hop timeouts
+- [x] `scripts/print_addresses.py` – deterministic address derivation from seeds
+- [x] `scripts/run_all.py` – 5-agent multi-process runner with Inspector URL extraction
+- [x] 33/33 unit & integration tests passing (`pytest tests/ -v`)
 
 ---
 

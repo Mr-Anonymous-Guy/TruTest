@@ -33,13 +33,13 @@ Overfit strategies fail when deployed live. **TrustTest** provides every retail 
 
 TrustTest is powered by 5 specialized uAgents collaborating over Fetch.ai's Agent Chat Protocol (ACP 0.3.0):
 
-| Agent | Role | Agent Address | Agentverse Profile | Protocol / Technology |
-|---|---|---|---|---|
-| **Orchestrator** | ASI:One-facing entry point; session state management; pipeline coordinator | `agent1qwlf7ep22r407eu89xa8rh4qa7h95vsltfxqmk6egfxa3t7h620cksg67ak` | [Profile (Pending Connect)](https://agentverse.ai) | ACP 0.3.0 (`chat_protocol_spec`) |
-| **Parser Agent** | Plain English → structured `StrategySpec` JSON | `agent1qddf7rvzcdw466gm2ssx2q7jvwvaw6jfrnjtleq38339lpgpsa6pzywph52` | _Local / Pipeline_ | ASI:One LLM API (`asi1`) + heuristic fallback |
-| **Data Agent** | Historical OHLCV market data retrieval | `agent1q2f00yh23d3lhzl28tf64jhsm35gtpumt47xp6fqzp5eglupdxtnx3t72pr` | _Local / Pipeline_ | Live `yfinance` + Local CSV Cache (`data/cache/`) |
-| **Backtest Agent** | Lookahead-free quantitative simulation engine | `agent1qvgehk9mr8d0l7hvtj25dutc52jp24yj0sqvt6ctw528h292qxlc76l664z` | _Local / Pipeline_ | pandas / NumPy, 1-bar signal shift, fees & slippage |
-| **Skeptic Agent** | Adversarial stress tester & auditor | `agent1q2fx992h9ufw5m3nkgcn42x9hycegsnyt67x2gdxpjp3wlpze0327dxffs3` | _Local / Pipeline_ | OOS (30%), 2x costs, param perturbations, Monte Carlo |
+| Agent | Role | Agent Address | Agentverse Profile | Port |
+|---|---|---|---|:---:|
+| **Orchestrator** | ASI:One gateway; session state; pipeline coordinator | `agent1qwlf7ep22r407eu89xa8rh4qa7h95vsltfxqmk6egfxa3t7h620cksg67ak` | [Profile (Pending Connect)](https://agentverse.ai) | 8001 |
+| **Parser Agent** | Plain English → structured `StrategySpec` JSON | `agent1qddf7rvzcdw466gm2ssx2q7jvwvaw6jfrnjtleq38339lpgpsa6pzywph52` | _Local / Agentverse Mailbox_ | 8005 |
+| **Data Agent** | Historical market data retrieval (live + cache fallback) | `agent1q2f00yh23d3lhzl28tf64jhsm35gtpumt47xp6fqzp5eglupdxtnx3t72pr` | _Local / Agentverse Mailbox_ | 8002 |
+| **Backtest Agent** | Lookahead-free quantitative simulation engine | `agent1qvgehk9mr8d0l7hvtj25dutc52jp24yj0sqvt6ctw528h292qxlc76l664z` | _Local / Agentverse Mailbox_ | 8003 |
+| **Skeptic Agent** | Adversarial stress tester & auditor | `agent1q2fx992h9ufw5m3nkgcn42x9hycegsnyt67x2gdxpjp3wlpze0327dxffs3` | _Local / Agentverse Mailbox_ | 8004 |
 
 ---
 
