@@ -9,6 +9,13 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
+from pathlib import Path
+
+# Ensure repo root is on sys.path
+_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from dotenv import load_dotenv
 import pandas as pd
@@ -37,6 +44,9 @@ class AuditRequest(Model):
 agent = Agent(
     name="trusttest_skeptic",
     seed=os.getenv("SKEPTIC_SEED", "trusttest_skeptic_seed_hackathon_fetchathon3"),
+    port=8004,
+    mailbox=True,
+    publish_agent_details=True,
 )
 
 

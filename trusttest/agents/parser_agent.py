@@ -12,8 +12,15 @@ import json
 import logging
 import os
 import re
+import sys
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+# Ensure repo root is on sys.path
+_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -220,6 +227,9 @@ def parse_strategy(text: str) -> StrategySpec:
 agent = Agent(
     name="trusttest_parser",
     seed=os.getenv("PARSER_SEED", "trusttest_parser_seed_hackathon_fetchathon3"),
+    port=8005,
+    mailbox=True,
+    publish_agent_details=True,
 )
 
 
