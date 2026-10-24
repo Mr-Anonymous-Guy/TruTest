@@ -29,10 +29,12 @@ Phase 5 Interactive Cards:
 
 from __future__ import annotations
 
+import collections
 import datetime
 import json
 import logging
 import os
+import re
 import socket
 import sys
 import time
@@ -318,6 +320,11 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage) -> None:
             elif isinstance(item, EndSessionContent):
                 has_end_session = True
 
+        if raw_user_text:
+            # Strip ASI:One agent address or name mention prefixes (e.g. '@agent1qwlf... Hello')
+            raw_user_text = re.sub(r"^@agent1[a-z0-9]+\s*", "", raw_user_text, flags=re.IGNORECASE)
+            raw_user_text = re.sub(r"^@\S+\s*", "", raw_user_text).strip()
+
         if has_end_session:
             session_store.clear(sender)
             ctx.logger.info("Cleaned up session state for %s", sender)
@@ -519,6 +526,7 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage) -> None:
 
         try:
             # --- HOP 1: PARSER AGENT (Skipped for pre-resolved stored examples & forms) ---
+            t1_ms: float = 0.0
             if pre_resolved_spec:
                 spec = pre_resolved_spec
                 assumptions = "Pre-configured verified benchmark parameters" if example_label else "Submitted form parameters"
