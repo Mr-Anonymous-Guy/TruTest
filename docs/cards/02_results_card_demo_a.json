@@ -1,0 +1,65 @@
+{
+  "card_kind": "detail",
+  "card_protocol_version": "1",
+  "card_payload": {
+    "title": "TrustTest: RELIANCE.NS [LIKELY OVERFIT]",
+    "summary_rows": [
+      {
+        "label": "Strategy & Ticker",
+        "value": "Ma Crossover (fast=50, slow=200) on RELIANCE.NS"
+      },
+      {
+        "label": "Date Range",
+        "value": "2021-10-25 to 2026-10-23 (adjusted prices)"
+      },
+      {
+        "label": "Skeptic Verdict",
+        "value": "\ud83d\udee1\ufe0f [LIKELY OVERFIT]"
+      },
+      {
+        "label": "Return vs OOS",
+        "value": "Total: -1.4% | OOS Sharpe 0.09 (Held)"
+      },
+      {
+        "label": "Total Return / CAGR",
+        "value": "-1.4% (CAGR: -0.3%)"
+      },
+      {
+        "label": "Sharpe / Max DD",
+        "value": "Sharpe 0.05 | Max DD -20.8%"
+      },
+      {
+        "label": "Trades (Win %)",
+        "value": "4 trades (25.0% win)"
+      }
+    ],
+    "ctas": [
+      {
+        "label": "See audit details",
+        "selection": {
+          "source": "trusttest",
+          "action": "show_audit",
+          "report_id": "demo-a-sample-id"
+        },
+        "primary": true
+      },
+      {
+        "label": "Full text report",
+        "selection": {
+          "source": "trusttest",
+          "action": "full_report",
+          "report_id": "demo-a-sample-id"
+        },
+        "primary": false
+      },
+      {
+        "label": "Try an example",
+        "selection": {
+          "source": "trusttest",
+          "action": "show_examples"
+        },
+        "primary": false
+      }
+    ]
+  }
+}

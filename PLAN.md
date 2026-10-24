@@ -80,15 +80,19 @@
 ## Phase 5 – ASI:One Interactive Cards (Protocol v1) ⏱ 0.5 h
 
 - [x] ASI:One Card Protocol v1 schemas via `MetadataContent` in `agents/cards.py`
-- [x] Card 1: Strategy Picker `CarouselCardPayload` on greeting / "hi" with Demo A, Demo B, and Form CTAs
-- [x] Card 2: Headline Results `DetailCardPayload` with metrics and Skeptic verdict badge
-- [x] Card 3: Adversarial Breakdown `DetailCardPayload` with 4 test findings and "Back to Results" CTA
-- [x] Card 4: Parameter Form `FormCardPayload` with field validation (fast < slow MA) and error title display
-- [x] `CardResultCache` bounded in-memory LRU store with TTL for instant card tab toggling
+- [x] `ReportView` dataclass built from existing results dicts with headline vs OOS contrast
+- [x] Card 1: Strategy Picker `CarouselCardPayload` on greeting / "hi" with Demo A, Demo B, and RSI TCS CTAs
+- [x] Card 2: Headline Results `DetailCardPayload` with metrics, OOS contrast, and Skeptic verdict badge
+- [x] Card 3: Adversarial Breakdown `DetailCardPayload` with 4 test findings, [PASS]/[FAIL] text, survivorship & disclaimer
+- [x] Card 4: Parameter Form `FormCardPayload` pre-filled with known fields; validated and capped at 2 attempts
+- [x] Server-side benchmark resolution (`STORED_EXAMPLES`) skipping Parser for instant 1-tap runs
+- [x] Bounded session store tracking last 5 reports per sender with short random IDs and 30-min idle TTL
+- [x] Plain-text commands: `full report`, `details`, and `status` working seamlessly even with cards off
+- [x] Robust selection parser supporting direct JSON and planner-mediated prose extraction
 - [x] Sample card payloads exported to `docs/cards/*.json` for ASI:One Card Playground verification
-- [x] Graceful text fallback when `TRUSTTEST_CARDS=off` or for partial results
-- [x] Future monetization plan documented in `README.md` (free backtest, paid audit)
-- [x] 68/68 unit & integration tests passing (`pytest tests/ -v`)
+- [x] Zero-downtime graceful fallback when `TRUSTTEST_CARDS=off` or on builder exception
+- [ ] Tier 3 NICE: "How TrustTest works" card and LLM explanation (skipped: hard stop prioritized docs and submission)
+- [x] 71/71 unit & integration tests passing (`pytest tests/ -q`)
 
 ---
 
@@ -97,6 +101,7 @@
 - [x] Standalone CLI demo runner (`scripts/demo.py`)
 - [x] Multi-agent bureau runner (`scripts/run_all.py`)
 - [x] End-to-end integration test suite (`tests/test_pipeline.py`)
+- [x] Future monetization plan documented in `README.md` (Payment Protocol noted as future work)
 
 ---
 

@@ -1,0 +1,73 @@
+{
+  "card_kind": "carousel",
+  "card_protocol_version": "1",
+  "card_payload": {
+    "title": "TrustTest Strategy Showcase",
+    "subtitle": "Select a verified benchmark or configure your own strategy below:",
+    "items": [
+      {
+        "id": "demo_a",
+        "title": "Demo A: 50/200 MA Cross",
+        "subtitle": "RELIANCE.NS (2021\u20132026)",
+        "badges": [
+          {
+            "label": "Trustworthy Benchmark",
+            "variant": "success"
+          }
+        ],
+        "secondary_text": "Sensible 50/200 MA. Survives 70/30 OOS split and 2x friction drag.",
+        "primary_cta": {
+          "label": "Run Demo A",
+          "selection": {
+            "source": "trusttest",
+            "action": "run_example",
+            "example_id": "demo_a"
+          },
+          "primary": true
+        }
+      },
+      {
+        "id": "demo_b",
+        "title": "Demo B: 23/35 MA Cross",
+        "subtitle": "RELIANCE.NS (Over-tuned)",
+        "badges": [
+          {
+            "label": "Likely Overfit",
+            "variant": "warning"
+          }
+        ],
+        "secondary_text": "Over-tuned 23/35 MA. High backtest returns that collapse under audit.",
+        "primary_cta": {
+          "label": "Run Demo B",
+          "selection": {
+            "source": "trusttest",
+            "action": "run_example",
+            "example_id": "demo_b"
+          },
+          "primary": true
+        }
+      },
+      {
+        "id": "rsi_tcs",
+        "title": "Demo C: RSI 14 Mean-Rev",
+        "subtitle": "TCS.NS (Oscillator)",
+        "badges": [
+          {
+            "label": "RSI Mean-Reversion",
+            "variant": "info"
+          }
+        ],
+        "secondary_text": "14-period RSI (30/70 thresholds). Rigorous cost and perturbation check.",
+        "primary_cta": {
+          "label": "Run RSI TCS",
+          "selection": {
+            "source": "trusttest",
+            "action": "run_example",
+            "example_id": "rsi_tcs"
+          },
+          "primary": true
+        }
+      }
+    ]
+  }
+}

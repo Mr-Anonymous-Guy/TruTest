@@ -2,23 +2,24 @@
 agents/cards.py – ASI:One Interactive Cards Protocol Generator (Phase 5)
 ========================================================================
 Implements ASI:One Card Protocol v1 schemas via uagents_core:
-  1. Strategy Picker (CarouselCardPayload) on greetings/hi
-  2. Headline Results Card (DetailCardPayload) with verdict badge
-  3. Audit Details Card (DetailCardPayload) with adversarial breakdown
-  4. Parameter Form Card (FormCardPayload) for custom strategy submission
-  5. In-memory CardResultCache with TTL for instant tab navigation
-  6. Pure text fallback when TRUSTTEST_CARDS=off
+  1. Strategy Picker (CarouselCardPayload) on greetings/hi/examples
+  2. Headline Results Card (DetailCardPayload) with verdict badge & return vs OOS
+  3. Audit Details Card (DetailCardPayload) with 4 adversarial tests breakdown
+  4. Parameter Form Card (FormCardPayload) for custom/clarification input
+  5. In-memory CardResultCache and ReportView dataclass
+  6. Robust selection parsing for direct JSON and planner-mediated prose
 """
 
 from __future__ import annotations
 
 import collections
+from dataclasses import dataclass, field
 import json
 import logging
 import os
+import re
 import time
 import uuid
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from uagents_core.contrib.protocols.chat import MetadataContent
@@ -38,6 +39,23 @@ from uagents_core.contrib.protocols.chat.cards import (
 
 logger = logging.getLogger("trusttest.cards")
 
+# Whitelisted action identifiers
+WHITELISTED_ACTIONS = {
+    "show_results",
+    "show_audit",
+    "full_report",
+    "show_examples",
+    "run_example",
+    "submit_form",
+    "open_form",
+    # Backward compatibility with initial experimental actions
+    "view_results_card",
+    "view_audit_details",
+    "full_text_report",
+    "run_demo_a",
+    "run_demo_b",
+}
+
 
 def are_cards_enabled() -> bool:
     """Return True if interactive cards are enabled (default ON)."""
@@ -51,6 +69,103 @@ def get_card_ttl_seconds() -> float:
         return float(os.getenv("TRUSTTEST_CARD_TTL", "1800"))
     except ValueError:
         return 1800.0
+
+
+# ---------------------------------------------------------------------------
+# ReportView Dataclass (Pure Python, derived from existing results dicts)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ReportView:
+    ticker: str
+    strategy_desc: str
+    assumptions: str
+    data_source: str
+    date_range: str
+    price_type: str
+    total_return_pct: float
+    cagr_pct: float
+    sharpe: float
+    max_drawdown_pct: float
+    trades: int
+    win_rate_pct: float
+    oos_result_text: str
+    tests: List[Dict[str, Any]]
+    verdict: str
+    warnings: List[str]
+    disclaimer: str
+
+    @classmethod
+    def from_results(
+        cls,
+        spec: Dict[str, Any],
+        backtest: Dict[str, Any],
+        audit: Dict[str, Any],
+    ) -> "ReportView":
+        ticker = str(spec.get("ticker", "N/A")).strip().upper()
+        strat = spec.get("strategy", "ma_crossover")
+        params = spec.get("params", {})
+        param_desc = ", ".join(f"{k}={v}" for k, v in params.items()) or "standard defaults"
+        strategy_desc = f"{strat.replace('_', ' ').title()} ({param_desc})"
+
+        fee = spec.get("fee_pct", 0.1)
+        slip = spec.get("slippage_pct", 0.05)
+        assumptions = f"Fee: {fee}%, Slippage: {slip}%"
+
+        start_date = spec.get("start", "2021-10-25")
+        end_date = spec.get("end", "2026-10-23")
+        data_source = "NSE Daily" if ".NS" in ticker else "Daily Close"
+        date_range = f"{start_date} to {end_date}"
+
+        tot_ret = float(backtest.get("total_return", 0.0)) * 100.0
+        cagr = float(backtest.get("cagr", 0.0)) * 100.0
+        sharpe = float(backtest.get("sharpe", 0.0))
+        max_dd = abs(float(backtest.get("max_drawdown", 0.0))) * 100.0
+        trades = int(backtest.get("trade_count", 0))
+        win_rate = float(backtest.get("win_rate", 0.0)) * 100.0
+
+        tests = audit.get("tests", [])
+        oos_test = next((t for t in tests if t.get("name") in ("out_of_sample", "oos_split")), None)
+        if oos_test:
+            oos_sharpe = oos_test.get("oos_sharpe")
+            oos_passed = oos_test.get("passed", False)
+            status_word = "Held" if oos_passed else "Collapsed"
+            if oos_sharpe is not None:
+                oos_result_text = f"OOS Sharpe {oos_sharpe:.2f} ({status_word})"
+            else:
+                oos_result_text = f"OOS Split {status_word}"
+        else:
+            oos_result_text = "OOS Split: N/A"
+
+        verdict = audit.get("verdict", "UNVALIDATED").strip().title()
+        warnings = []
+        if trades < 10:
+            warnings.append(f"Low trade count ({trades} trades): limited statistical significance")
+        for t in tests:
+            if not t.get("passed") and t.get("name") == "cost_sensitivity":
+                warnings.append("High friction drag: alpha collapses under realistic brokerage")
+
+        disclaimer = "Trustworthy means survived these tests, not that it will make money. Educational only, not investment advice."
+
+        return cls(
+            ticker=ticker,
+            strategy_desc=strategy_desc,
+            assumptions=assumptions,
+            data_source=data_source,
+            date_range=date_range,
+            price_type="adjusted prices",
+            total_return_pct=tot_ret,
+            cagr_pct=cagr,
+            sharpe=sharpe,
+            max_drawdown_pct=max_dd,
+            trades=trades,
+            win_rate_pct=win_rate,
+            oos_result_text=oos_result_text,
+            tests=tests,
+            verdict=verdict,
+            warnings=warnings,
+            disclaimer=disclaimer,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -87,6 +202,7 @@ class CardResultCache:
             "backtest": backtest,
             "audit": audit,
             "full_text": full_text,
+            "report_view": ReportView.from_results(spec, backtest, audit),
             "created_at": now,
         }
 
@@ -118,13 +234,13 @@ card_cache = CardResultCache()
 
 
 # ---------------------------------------------------------------------------
-# Card Generators
+# Card Builders
 # ---------------------------------------------------------------------------
 
 def create_strategy_picker_card() -> MetadataContent:
     """
-    Card 1: Strategy Picker Carousel sent on 'hi' or greeting.
-    Provides one-tap execution for Demo A, Demo B, or Custom Form.
+    Card 1: Strategy Picker Carousel sent on greetings, help, or show_examples.
+    Provides one-tap execution for Demo A, Demo B, or RSI 14 TCS.
     """
     payload = CarouselCardPayload(
         title="TrustTest Strategy Showcase",
@@ -133,36 +249,36 @@ def create_strategy_picker_card() -> MetadataContent:
             CarouselItem(
                 id="demo_a",
                 title="Demo A: 50/200 MA Cross",
-                subtitle="RELIANCE.NS (2018–2024)",
+                subtitle="RELIANCE.NS (2021–2026)",
                 badges=[CarouselBadge(label="Trustworthy Benchmark", variant="success")],
-                secondary_text="Survives 70/30 OOS split, cost 2x drag, and beats random baseline.",
+                secondary_text="Sensible 50/200 MA. Survives 70/30 OOS split and 2x friction drag.",
                 primary_cta=CtaAction(
                     label="Run Demo A",
-                    selection={"action": "run_demo_a"},
+                    selection={"source": "trusttest", "action": "run_example", "example_id": "demo_a"},
                     primary=True,
                 ),
             ),
             CarouselItem(
                 id="demo_b",
-                title="Demo B: 10/30 MA Cross",
-                subtitle="RELIANCE.NS (2021–2023 Overfit)",
-                badges=[CarouselBadge(label="Overfit Takedown", variant="warning")],
-                secondary_text="Impressive in-sample returns that collapse under adversarial audit.",
+                title="Demo B: 23/35 MA Cross",
+                subtitle="RELIANCE.NS (Over-tuned)",
+                badges=[CarouselBadge(label="Likely Overfit", variant="warning")],
+                secondary_text="Over-tuned 23/35 MA. High backtest returns that collapse under audit.",
                 primary_cta=CtaAction(
                     label="Run Demo B",
-                    selection={"action": "run_demo_b"},
+                    selection={"source": "trusttest", "action": "run_example", "example_id": "demo_b"},
                     primary=True,
                 ),
             ),
             CarouselItem(
-                id="custom_form",
-                title="Custom Parameter Form",
-                subtitle="Tune MA Windows & Dates",
-                badges=[CarouselBadge(label="Interactive Form", variant="info")],
-                secondary_text="Configure stock symbols, moving average fast/slow days, and duration.",
+                id="rsi_tcs",
+                title="Demo C: RSI 14 Mean-Rev",
+                subtitle="TCS.NS (Oscillator)",
+                badges=[CarouselBadge(label="RSI Mean-Reversion", variant="info")],
+                secondary_text="14-period RSI (30/70 thresholds). Rigorous cost and perturbation check.",
                 primary_cta=CtaAction(
-                    label="Open Parameter Form",
-                    selection={"action": "open_form"},
+                    label="Run RSI TCS",
+                    selection={"source": "trusttest", "action": "run_example", "example_id": "rsi_tcs"},
                     primary=True,
                 ),
             ),
@@ -178,42 +294,39 @@ def create_results_card(
     audit: Dict[str, Any],
 ) -> MetadataContent:
     """
-    Card 2: Headline Results Card with performance metrics and Skeptic verdict.
+    Card 2: Headline Results Card with key metrics, verdict badge, and the contrast
+    that sells the demo: headline return next to out-of-sample result.
     """
-    ticker = spec.get("ticker", "N/A")
-    strat_name = spec.get("strategy", "Strategy").replace("_", " ").title()
-    params = spec.get("params", {})
-    param_str = ", ".join(f"{k}={v}" for k, v in params.items())
-
-    tot_ret = backtest.get("total_return", 0.0) * 100
-    sharpe = backtest.get("sharpe", 0.0)
-    max_dd = backtest.get("max_drawdown", 0.0) * 100
-    trades = backtest.get("trade_count", 0)
-    win_rate = backtest.get("win_rate", 0.0) * 100
-    verdict = audit.get("verdict", "UNVALIDATED").upper()
+    view = ReportView.from_results(spec, backtest, audit)
+    verdict_upper = view.verdict.upper()
 
     summary_rows = [
-        DetailSummaryRow(label="Strategy & Ticker", value=f"{strat_name} on {ticker}"),
-        DetailSummaryRow(label="Parameters", value=param_str or "Standard defaults"),
-        DetailSummaryRow(label="Total Return", value=f"{tot_ret:+.2f}%"),
-        DetailSummaryRow(label="Sharpe Ratio", value=f"{sharpe:.2f}"),
-        DetailSummaryRow(label="Max Drawdown", value=f"{max_dd:.2f}%"),
-        DetailSummaryRow(label="Trades (Win %)", value=f"{trades} trades ({win_rate:.1f}% win)"),
-        DetailSummaryRow(label="Skeptic Verdict", value=f"🛡️ {verdict}"),
+        DetailSummaryRow(label="Strategy & Ticker", value=f"{view.strategy_desc} on {view.ticker}"),
+        DetailSummaryRow(label="Date Range", value=f"{view.date_range} ({view.price_type})"),
+        DetailSummaryRow(label="Skeptic Verdict", value=f"🛡️ [{verdict_upper}]"),
+        DetailSummaryRow(label="Return vs OOS", value=f"Total: {view.total_return_pct:+.1f}% | {view.oos_result_text}"),
+        DetailSummaryRow(label="Total Return / CAGR", value=f"{view.total_return_pct:+.1f}% (CAGR: {view.cagr_pct:+.1f}%)"),
+        DetailSummaryRow(label="Sharpe / Max DD", value=f"Sharpe {view.sharpe:.2f} | Max DD -{view.max_drawdown_pct:.1f}%"),
+        DetailSummaryRow(label="Trades (Win %)", value=f"{view.trades} trades ({view.win_rate_pct:.1f}% win)"),
     ]
 
     payload = DetailCardPayload(
-        title=f"TrustTest Results: {ticker}",
+        title=f"TrustTest: {view.ticker} [{verdict_upper}]",
         summary_rows=summary_rows,
         ctas=[
             CtaAction(
-                label="See Audit Details",
-                selection={"action": "view_audit_details", "result_id": result_id},
+                label="See audit details",
+                selection={"source": "trusttest", "action": "show_audit", "report_id": result_id},
                 primary=True,
             ),
             CtaAction(
-                label="Full Text Report",
-                selection={"action": "full_text_report", "result_id": result_id},
+                label="Full text report",
+                selection={"source": "trusttest", "action": "full_report", "report_id": result_id},
+                primary=False,
+            ),
+            CtaAction(
+                label="Try an example",
+                selection={"source": "trusttest", "action": "show_examples"},
                 primary=False,
             ),
         ],
@@ -225,16 +338,19 @@ def create_audit_details_card(
     result_id: str,
     spec: Dict[str, Any],
     audit: Dict[str, Any],
+    backtest: Optional[Dict[str, Any]] = None,
 ) -> MetadataContent:
     """
-    Card 3: Audit Detail Card detailing the 4 adversarial tests and findings.
+    Card 3: Audit Detail Card detailing the 4 adversarial tests, warnings,
+    survivorship note, and educational disclaimer.
     """
-    ticker = spec.get("ticker", "N/A")
-    verdict = audit.get("verdict", "UNVALIDATED").upper()
-    tests = audit.get("tests", [])
+    view = ReportView.from_results(spec, backtest or {}, audit)
+    verdict_upper = view.verdict.upper()
 
-    summary_rows = []
-    for t in tests:
+    summary_rows: List[DetailSummaryRow] = []
+
+    # 4 adversarial tests
+    for t in view.tests:
         name = t.get("name", "").replace("_", " ").title()
         status_tag = "PASS" if t.get("passed") else "FAIL"
         summary_rows.append(
@@ -246,20 +362,34 @@ def create_audit_details_card(
             DetailSummaryRow(label="Audit Status", value=audit.get("note", "No test metrics available."))
         )
 
-    summary_rows.append(DetailSummaryRow(label="Final Verdict", value=f"🛡️ {verdict}"))
+    # Warnings
+    if view.warnings:
+        summary_rows.append(
+            DetailSummaryRow(label="⚠️ Warnings", value="; ".join(view.warnings))
+        )
+
+    # Survivorship bias note
+    summary_rows.append(
+        DetailSummaryRow(label="Survivorship Bias", value="Constituent survivorship applies. Delisted tickers excluded.")
+    )
+
+    # Educational disclaimer
+    summary_rows.append(
+        DetailSummaryRow(label="Disclaimer", value=view.disclaimer)
+    )
 
     payload = DetailCardPayload(
-        title=f"Adversarial Audit Breakdown: {ticker}",
+        title=f"Adversarial Audit: {view.ticker} [{verdict_upper}]",
         summary_rows=summary_rows,
         ctas=[
             CtaAction(
-                label="Back to Results",
-                selection={"action": "view_results_card", "result_id": result_id},
+                label="Back to results",
+                selection={"source": "trusttest", "action": "show_results", "report_id": result_id},
                 primary=True,
             ),
             CtaAction(
-                label="Full Text Report",
-                selection={"action": "full_text_report", "result_id": result_id},
+                label="Try an example",
+                selection={"source": "trusttest", "action": "show_examples"},
                 primary=False,
             ),
         ],
@@ -267,13 +397,22 @@ def create_audit_details_card(
     return create_card_content(payload, card_id=uuid.uuid4())
 
 
-def create_parameter_form_card(error_msg: Optional[str] = None) -> MetadataContent:
+def create_parameter_form_card(
+    partial_spec: Optional[Dict[str, Any]] = None,
+    error_msg: Optional[str] = None,
+) -> MetadataContent:
     """
-    Card 4: Interactive Parameter Form Card for custom strategy inputs.
+    Card 4: Interactive Parameter Form Card pre-filled with what is already known.
     """
+    partial = partial_spec or {}
+    params = partial.get("params", {})
+    ticker_val = str(partial.get("ticker", "RELIANCE.NS")).upper()
+    fast_val = str(params.get("fast", 50))
+    slow_val = str(params.get("slow", 200))
+
     title = "Configure Strategy Parameters"
     if error_msg:
-        title = f"Form Error: {error_msg}"
+        title = f"Validation Error: {error_msg}"
 
     payload = FormCardPayload(
         title=title,
@@ -294,21 +433,21 @@ def create_parameter_form_card(error_msg: Optional[str] = None) -> MetadataConte
             FormField(
                 name="fast",
                 kind="number",
-                label="Fast Moving Average (days)",
+                label="Fast Moving Average Window (days)",
                 required=True,
-                placeholder="50",
+                placeholder=fast_val,
             ),
             FormField(
                 name="slow",
                 kind="number",
-                label="Slow Moving Average (days)",
+                label="Slow Moving Average Window (days)",
                 required=True,
-                placeholder="200",
+                placeholder=slow_val,
             ),
             FormField(
                 name="duration_years",
                 kind="select",
-                label="Historical Evaluation Window",
+                label="Historical Backtest Window",
                 required=True,
                 options=[
                     FormFieldOption(label="5 Years (Institutional Standard)", value="5"),
@@ -318,36 +457,89 @@ def create_parameter_form_card(error_msg: Optional[str] = None) -> MetadataConte
             ),
         ],
         submit_cta=CtaAction(
-            label="Submit Backtest & Audit",
-            selection={"action": "submit_form"},
+            label="Run Backtest & Audit",
+            selection={"source": "trusttest", "action": "submit_form"},
             primary=True,
         ),
     )
     return create_card_content(payload, card_id=uuid.uuid4())
 
 
-def extract_selection_from_message(msg: Any) -> Optional[Dict[str, Any]]:
-    """
-    Robust extraction of card CTA selection payload:
-      1. Inspects MetadataContent blocks using official extract_card_response
-      2. Falls back to parsing JSON in TextContent for legacy clients
-    """
-    # 1. Official MetadataContent path
-    for item in getattr(msg, "content", []):
-        if isinstance(item, MetadataContent):
-            resp = extract_card_response(item)
-            if resp and resp.selection:
-                return resp.selection
+# ---------------------------------------------------------------------------
+# Card Selection Parsing & Routing Helpers
+# ---------------------------------------------------------------------------
 
-    # 2. Backwards-compatible text path
-    for item in getattr(msg, "content", []):
-        text = getattr(item, "text", "")
-        if text and text.strip().startswith("{") and text.strip().endswith("}"):
-            try:
-                data = json.loads(text.strip())
-                if isinstance(data, dict) and "action" in data:
+_JSON_EXTRACT_RE = re.compile(r"\{[^{}]*\}")
+
+
+def parse_card_selection(text_or_msg: Any) -> Optional[Dict[str, Any]]:
+    """
+    Robust extraction and validation of card CTA selection payload:
+      1. Inspects MetadataContent blocks via uagents_core extract_card_response
+      2. Accepts direct JSON payload in text
+      3. Accepts JSON object embedded inside prose (planner-mediated path)
+      4. Whitelists source ('trusttest') and valid actions
+      5. Enforces input length bounds (<= 2000 chars)
+
+    Returns validated selection dict, or None to fall back to normal text path.
+    """
+    if text_or_msg is None:
+        return None
+
+    # Path 1: Check MetadataContent if a ChatMessage-like object is provided
+    content_list = getattr(text_or_msg, "content", None)
+    if isinstance(content_list, list):
+        for item in content_list:
+            if isinstance(item, MetadataContent):
+                resp = extract_card_response(item)
+                if resp and resp.selection and isinstance(resp.selection, dict):
+                    sel = resp.selection
+                    action = sel.get("action")
+                    if action in WHITELISTED_ACTIONS:
+                        return sel
+
+        # If no MetadataContent hit, combine any text blocks for text inspection
+        text_parts = [
+            getattr(it, "text", "")
+            for it in content_list
+            if getattr(it, "text", "")
+        ]
+        text_candidate = " ".join(text_parts).strip()
+    elif isinstance(text_or_msg, str):
+        text_candidate = text_or_msg.strip()
+    else:
+        text_candidate = str(text_or_msg).strip()
+
+    if not text_candidate or len(text_candidate) > 2000:
+        return None
+
+    # Path 2: Direct JSON payload
+    if text_candidate.startswith("{") and text_candidate.endswith("}"):
+        try:
+            data = json.loads(text_candidate)
+            if isinstance(data, dict):
+                src = data.get("source")
+                act = data.get("action")
+                if (src == "trusttest" or not src) and act in WHITELISTED_ACTIONS:
                     return data
-            except Exception:
-                pass
+        except Exception:
+            pass
+
+    # Path 3: JSON embedded inside prose (planner-mediated path)
+    matches = _JSON_EXTRACT_RE.findall(text_candidate)
+    for m in matches:
+        try:
+            data = json.loads(m)
+            if isinstance(data, dict):
+                src = data.get("source")
+                act = data.get("action")
+                if (src == "trusttest" or not src) and act in WHITELISTED_ACTIONS:
+                    return data
+        except Exception:
+            continue
 
     return None
+
+
+# Backward-compatible alias
+extract_selection_from_message = parse_card_selection

@@ -57,13 +57,14 @@ from uagents_core.contrib.protocols.chat import (
 
 from agents import messages
 from agents.cards import (
+    ReportView,
     are_cards_enabled,
     card_cache,
     create_audit_details_card,
     create_parameter_form_card,
     create_results_card,
     create_strategy_picker_card,
-    extract_selection_from_message,
+    parse_card_selection,
 )
 from agents.faults import check_and_log_faults_startup
 from agents.models import (
@@ -130,6 +131,42 @@ dedup = MessageDeduplicator(max_size=2000)
 
 _orchestrator_start_time = time.time()
 check_and_log_faults_startup("trusttest_orchestrator")
+
+# ---------------------------------------------------------------------------
+# Stored Benchmark Examples (Server-Side Resolution)
+# ---------------------------------------------------------------------------
+STORED_EXAMPLES: Dict[str, Dict[str, Any]] = {
+    "demo_a": {
+        "ticker": "RELIANCE.NS",
+        "strategy": "ma_crossover",
+        "params": {"fast": 50, "slow": 200},
+        "fee_pct": 0.1,
+        "slippage_pct": 0.05,
+        "start": "2021-10-25",
+        "end": "2026-10-23",
+        "label": "Demo A (Sensible 50/200 MA on RELIANCE.NS)",
+    },
+    "demo_b": {
+        "ticker": "RELIANCE.NS",
+        "strategy": "ma_crossover",
+        "params": {"fast": 23, "slow": 35},
+        "fee_pct": 0.1,
+        "slippage_pct": 0.05,
+        "start": "2021-10-25",
+        "end": "2026-10-23",
+        "label": "Demo B (Over-tuned 23/35 MA on RELIANCE.NS)",
+    },
+    "rsi_tcs": {
+        "ticker": "TCS.NS",
+        "strategy": "rsi",
+        "params": {"period": 14, "oversold": 30, "overbought": 70},
+        "fee_pct": 0.1,
+        "slippage_pct": 0.05,
+        "start": "2021-10-25",
+        "end": "2026-10-23",
+        "label": "Demo C (14-period RSI on TCS.NS)",
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -289,44 +326,87 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage) -> None:
         # -------------------------------------------------------------------
         # Phase 5: Handle Card Tap Selections
         # -------------------------------------------------------------------
-        card_action = extract_selection_from_message(msg)
+        pre_resolved_spec: Optional[Dict[str, Any]] = None
+        example_label: Optional[str] = None
+        card_action = parse_card_selection(msg)
+
         if card_action:
             action = card_action.get("action")
             ctx.logger.info("Card action received from %s: '%s'", sender, action)
 
-            if action == "view_audit_details":
-                res_id = card_action.get("result_id")
-                cached = card_cache.get(res_id)
+            # Display actions: bypass concurrency guard, read stored report
+            if action in ("show_audit", "view_audit_details"):
+                res_id = card_action.get("report_id") or card_action.get("result_id")
+                recent = sess.get("recent_reports", {})
+                cached = recent.get(res_id) if recent else None
+                if not cached and res_id:
+                    cached = card_cache.get(res_id)
                 if not cached:
-                    await ctx.send(sender, create_text_chat("⚠️ That result has expired. Please run the strategy again or choose an example from 'hi'."))
+                    await ctx.send(sender, create_text_chat("⚠️ That result has expired, please run the strategy again or choose an example from 'hi'."))
                     return
-                audit_card = create_audit_details_card(res_id, cached["spec"], cached["audit"])
+                audit_card = create_audit_details_card(res_id, cached["spec"], cached["audit"], cached.get("backtest"))
                 await ctx.send(sender, ChatMessage(content=[TextContent(type="text", text=f"Adversarial Audit Breakdown for {cached['spec']['ticker']}:"), audit_card]))
                 return
 
-            elif action == "view_results_card":
-                res_id = card_action.get("result_id")
-                cached = card_cache.get(res_id)
+            elif action in ("show_results", "view_results_card"):
+                res_id = card_action.get("report_id") or card_action.get("result_id")
+                recent = sess.get("recent_reports", {})
+                cached = recent.get(res_id) if recent else None
+                if not cached and res_id:
+                    cached = card_cache.get(res_id)
                 if not cached:
-                    await ctx.send(sender, create_text_chat("⚠️ That result has expired. Please run the strategy again or choose an example from 'hi'."))
+                    await ctx.send(sender, create_text_chat("⚠️ That result has expired, please run the strategy again or choose an example from 'hi'."))
                     return
                 res_card = create_results_card(res_id, cached["spec"], cached["backtest"], cached["audit"])
                 await ctx.send(sender, ChatMessage(content=[TextContent(type="text", text=f"Backtest Results for {cached['spec']['ticker']}:"), res_card]))
                 return
 
-            elif action == "full_text_report":
-                res_id = card_action.get("result_id")
-                cached = card_cache.get(res_id)
+            elif action in ("full_report", "full_text_report"):
+                res_id = card_action.get("report_id") or card_action.get("result_id")
+                recent = sess.get("recent_reports", {})
+                cached = recent.get(res_id) if recent else None
+                if not cached and res_id:
+                    cached = card_cache.get(res_id)
                 if not cached:
-                    await ctx.send(sender, create_text_chat("⚠️ That result has expired. Please run the strategy again or choose an example from 'hi'."))
+                    await ctx.send(sender, create_text_chat("⚠️ That result has expired, please run the strategy again or choose an example from 'hi'."))
                     return
                 await ctx.send(sender, create_text_chat(cached["full_text"]))
                 return
 
-            elif action == "open_form":
+            elif action == "show_examples":
+                if are_cards_enabled():
+                    picker_card = create_strategy_picker_card()
+                    await ctx.send(sender, ChatMessage(content=[TextContent(type="text", text="Select a verified benchmark example below or type a custom strategy:"), picker_card]))
+                else:
+                    await ctx.send(sender, create_text_chat(messages.WELCOME_GREETING))
+                return
+
+            elif action in ("open_form",):
                 form_card = create_parameter_form_card()
                 await ctx.send(sender, ChatMessage(content=[TextContent(type="text", text="Configure your custom strategy parameters below:"), form_card]))
                 return
+
+            elif action == "run_example":
+                ex_id = str(card_action.get("example_id", "")).strip().lower()
+                if ex_id not in STORED_EXAMPLES:
+                    await ctx.send(sender, create_text_chat("⚠️ Unknown example ID. Please select Demo A, Demo B, or RSI TCS from the examples picker."))
+                    return
+                ex = STORED_EXAMPLES[ex_id]
+                pre_resolved_spec = dict(ex)
+                example_label = ex.get("label", ex_id)
+                raw_user_text = f"Running stored example: {example_label}"
+
+            elif action == "run_demo_a":
+                ex = STORED_EXAMPLES["demo_a"]
+                pre_resolved_spec = dict(ex)
+                example_label = ex.get("label")
+                raw_user_text = f"Running stored example: {example_label}"
+
+            elif action == "run_demo_b":
+                ex = STORED_EXAMPLES["demo_b"]
+                pre_resolved_spec = dict(ex)
+                example_label = ex.get("label")
+                raw_user_text = f"Running stored example: {example_label}"
 
             elif action == "submit_form":
                 ticker = str(card_action.get("ticker", "RELIANCE.NS")).strip().upper()
@@ -335,24 +415,39 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage) -> None:
                     slow = int(card_action.get("slow", 200))
                     duration = int(card_action.get("duration_years", 5))
                 except (ValueError, TypeError):
-                    err = "Invalid moving average window or duration: integers required."
-                    form_card = create_parameter_form_card(error_msg=err)
-                    await ctx.send(sender, ChatMessage(content=[TextContent(type="text", text=f"⚠️ {err}"), form_card]))
+                    err = "Invalid moving average window: integers required."
+                    sess["form_attempts"] = sess.get("form_attempts", 0) + 1
+                    if are_cards_enabled() and sess["form_attempts"] <= 2:
+                        form_card = create_parameter_form_card(error_msg=err)
+                        await ctx.send(sender, ChatMessage(content=[TextContent(type="text", text=f"⚠️ {err}"), form_card]))
+                    else:
+                        await ctx.send(sender, create_text_chat(f"⚠️ {err}"))
                     return
 
                 if fast <= 0 or slow <= 0 or fast >= slow:
                     err = f"Fast window ({fast}) must be strictly less than slow window ({slow})."
-                    form_card = create_parameter_form_card(error_msg=err)
-                    await ctx.send(sender, ChatMessage(content=[TextContent(type="text", text=f"⚠️ {err}"), form_card]))
+                    sess["form_attempts"] = sess.get("form_attempts", 0) + 1
+                    if are_cards_enabled() and sess["form_attempts"] <= 2:
+                        form_card = create_parameter_form_card(
+                            partial_spec={"ticker": ticker, "params": {"fast": fast, "slow": slow}},
+                            error_msg=err,
+                        )
+                        await ctx.send(sender, ChatMessage(content=[TextContent(type="text", text=f"⚠️ {err}"), form_card]))
+                    else:
+                        await ctx.send(sender, create_text_chat(f"⚠️ {err}"))
                     return
 
-                raw_user_text = f"Backtest {fast}/{slow} moving average crossover on {ticker} for the last {duration} years"
-
-            elif action == "run_demo_a":
-                raw_user_text = "Backtest 50/200 MA crossover on RELIANCE.NS from 2018-01-01 to 2024-01-01"
-
-            elif action == "run_demo_b":
-                raw_user_text = "Backtest 10/30 MA crossover on RELIANCE.NS from 2021-01-01 to 2023-01-01"
+                sess["form_attempts"] = 0
+                pre_resolved_spec = {
+                    "ticker": ticker,
+                    "strategy": "ma_crossover",
+                    "params": {"fast": fast, "slow": slow},
+                    "fee_pct": 0.1,
+                    "slippage_pct": 0.05,
+                    "start": "2021-10-25",
+                    "end": "2026-10-23",
+                }
+                raw_user_text = f"Form submitted: {fast}/{slow} MA crossover on {ticker}"
 
         # -------------------------------------------------------------------
         # Plain Text Commands (Status, Full Report, Custom Form, Greeting)
@@ -365,15 +460,17 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage) -> None:
             await ctx.send(sender, create_text_chat(health_report))
             return
 
-        # Full text report request by plain text
-        if cleaned_text in ("full report", "/report", "full text report"):
+        # Full text report request by plain text (works even with cards off)
+        if cleaned_text in ("full report", "/report", "full text report", "details"):
+            recent = sess.get("recent_reports", {})
             last_id = sess.get("last_result_id")
-            if last_id:
+            cached = recent.get(last_id) if (recent and last_id) else None
+            if not cached and last_id:
                 cached = card_cache.get(last_id)
-                if cached:
-                    await ctx.send(sender, create_text_chat(cached["full_text"]))
-                    return
-            await ctx.send(sender, create_text_chat("No recent backtest report found in this session. Send a strategy to get started."))
+            if cached and "full_text" in cached:
+                await ctx.send(sender, create_text_chat(cached["full_text"]))
+                return
+            await ctx.send(sender, create_text_chat("No recent backtest report found in this session. Send a strategy or type 'hi' for benchmark examples."))
             return
 
         # Form opener command
@@ -421,66 +518,88 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage) -> None:
         ctx.logger.info("Processing pipeline request [%s] for %s: '%.200s'", req_id, sender, user_text)
 
         try:
-            # --- HOP 1: PARSER AGENT ---
-            t1_start = time.perf_counter()
-            parse_req = ParseRequest(request_id=req_id, text=user_text, context=sess.get("partial_spec"))
-            step1_timeout = budget.clamp_timeout(30.0)
+            # --- HOP 1: PARSER AGENT (Skipped for pre-resolved stored examples & forms) ---
+            if pre_resolved_spec:
+                spec = pre_resolved_spec
+                assumptions = "Pre-configured verified benchmark parameters" if example_label else "Submitted form parameters"
+                trace_steps.append({
+                    "hop": 1,
+                    "agent": "Strategy Parser",
+                    "status": "SUCCESS",
+                    "latency_ms": 0.0,
+                    "details": f"Server-side resolved: {spec.get('strategy')} on {spec.get('ticker')}",
+                })
+                ctx.logger.info("Hop 1 bypassed [%s]: Pre-resolved spec %s on %s", req_id, spec.get("strategy"), spec.get("ticker"))
+            else:
+                t1_start = time.perf_counter()
+                parse_req = ParseRequest(request_id=req_id, text=user_text, context=sess.get("partial_spec"))
+                step1_timeout = budget.clamp_timeout(30.0)
 
-            async def _call_parser():
-                res = await send_worker_request(
-                    ctx, PARSER_AGENT_ADDRESS, parse_req, ParseResponse, timeout=step1_timeout
-                )
-                if res is None:
-                    raise TransientError("Parser agent did not respond within timeout.")
-                return res
+                async def _call_parser():
+                    res = await send_worker_request(
+                        ctx, PARSER_AGENT_ADDRESS, parse_req, ParseResponse, timeout=step1_timeout
+                    )
+                    if res is None:
+                        raise TransientError("Parser agent did not respond within timeout.")
+                    return res
 
-            parse_res: Optional[ParseResponse] = None
-            try:
-                parse_res = await _call_parser()
-            except TransientError:
-                ctx.logger.warning("Parser timed out on attempt 1 [%s]; retrying...", req_id)
-                record_hop_event(req_id, sender, "Strategy Parser", "timeout", (time.perf_counter() - t1_start) * 1000, attempt=1)
+                parse_res: Optional[ParseResponse] = None
                 try:
                     parse_res = await _call_parser()
-                except Exception as p_exc:
-                    ctx.logger.error("Parser failed on retry [%s]: %s", req_id, p_exc)
+                except TransientError:
+                    ctx.logger.warning("Parser timed out on attempt 1 [%s]; retrying...", req_id)
+                    record_hop_event(req_id, sender, "Strategy Parser", "timeout", (time.perf_counter() - t1_start) * 1000, attempt=1)
+                    try:
+                        parse_res = await _call_parser()
+                    except Exception as p_exc:
+                        ctx.logger.error("Parser failed on retry [%s]: %s", req_id, p_exc)
 
-            t1_ms = (time.perf_counter() - t1_start) * 1000
+                t1_ms = (time.perf_counter() - t1_start) * 1000
 
-            if not parse_res:
-                record_hop_event(req_id, sender, "Strategy Parser", "timeout", t1_ms, attempt=2)
-                trace_steps.append({"hop": 1, "agent": "Strategy Parser", "status": "FAILED", "latency_ms": t1_ms, "details": "Parser Agent timed out after retry"})
-                save_full_pipeline_trace(req_id, sender, user_text, trace_steps, (time.perf_counter() - t_start) * 1000)
-                await ctx.send(sender, create_text_chat(messages.PARSER_FAILED))
-                return
-
-            if not parse_res.ok:
-                if parse_res.question:
-                    session_store.update_partial_spec(sender, parse_res.spec)
-                    record_hop_event(req_id, sender, "Strategy Parser", "clarification", t1_ms, note=parse_res.question)
-                    trace_steps.append({"hop": 1, "agent": "Strategy Parser", "status": "CLARIFICATION", "latency_ms": t1_ms, "details": parse_res.question})
+                if not parse_res:
+                    record_hop_event(req_id, sender, "Strategy Parser", "timeout", t1_ms, attempt=2)
+                    trace_steps.append({"hop": 1, "agent": "Strategy Parser", "status": "FAILED", "latency_ms": t1_ms, "details": "Parser Agent timed out after retry"})
                     save_full_pipeline_trace(req_id, sender, user_text, trace_steps, (time.perf_counter() - t_start) * 1000)
-                    await ctx.send(sender, create_text_chat(parse_res.question))
-                    return
-                else:
-                    err_msg = parse_res.error or "Could not parse strategy."
-                    record_hop_event(req_id, sender, "Strategy Parser", "user_error", t1_ms, note=err_msg)
-                    trace_steps.append({"hop": 1, "agent": "Strategy Parser", "status": "FAILED", "latency_ms": t1_ms, "details": err_msg})
-                    save_full_pipeline_trace(req_id, sender, user_text, trace_steps, (time.perf_counter() - t_start) * 1000)
-                    await ctx.send(sender, create_text_chat(f"⚠️ Strategy parsing issue: {err_msg}"))
+                    await ctx.send(sender, create_text_chat(messages.PARSER_FAILED))
                     return
 
-            spec = parse_res.spec
-            assumptions = parse_res.assumptions
-            record_hop_event(req_id, sender, "Strategy Parser", "ok", t1_ms, note=f"{spec.get('strategy')} on {spec.get('ticker')}")
-            trace_steps.append({
-                "hop": 1,
-                "agent": "Strategy Parser",
-                "status": "SUCCESS",
-                "latency_ms": t1_ms,
-                "details": f"{spec.get('strategy')} on {spec.get('ticker')}",
-            })
-            ctx.logger.info("Hop 1 complete [%s]: Parsed %s on %s in %.0fms", req_id, spec.get("strategy"), spec.get("ticker"), t1_ms)
+                if not parse_res.ok:
+                    if parse_res.question:
+                        session_store.update_partial_spec(sender, parse_res.spec)
+                        record_hop_event(req_id, sender, "Strategy Parser", "clarification", t1_ms, note=parse_res.question)
+                        trace_steps.append({"hop": 1, "agent": "Strategy Parser", "status": "CLARIFICATION", "latency_ms": t1_ms, "details": parse_res.question})
+                        save_full_pipeline_trace(req_id, sender, user_text, trace_steps, (time.perf_counter() - t_start) * 1000)
+
+                        attempts = sess.get("form_attempts", 0)
+                        if are_cards_enabled() and attempts < 2:
+                            sess["form_attempts"] = attempts + 1
+                            form_card = create_parameter_form_card(partial_spec=parse_res.spec)
+                            await ctx.send(
+                                sender,
+                                ChatMessage(content=[TextContent(type="text", text=parse_res.question), form_card]),
+                            )
+                        else:
+                            await ctx.send(sender, create_text_chat(parse_res.question))
+                        return
+                    else:
+                        err_msg = parse_res.error or "Could not parse strategy."
+                        record_hop_event(req_id, sender, "Strategy Parser", "user_error", t1_ms, note=err_msg)
+                        trace_steps.append({"hop": 1, "agent": "Strategy Parser", "status": "FAILED", "latency_ms": t1_ms, "details": err_msg})
+                        save_full_pipeline_trace(req_id, sender, user_text, trace_steps, (time.perf_counter() - t_start) * 1000)
+                        await ctx.send(sender, create_text_chat(f"⚠️ Strategy parsing issue: {err_msg}"))
+                        return
+
+                spec = parse_res.spec
+                assumptions = parse_res.assumptions
+                record_hop_event(req_id, sender, "Strategy Parser", "ok", t1_ms, note=f"{spec.get('strategy')} on {spec.get('ticker')}")
+                trace_steps.append({
+                    "hop": 1,
+                    "agent": "Strategy Parser",
+                    "status": "SUCCESS",
+                    "latency_ms": t1_ms,
+                    "details": f"{spec.get('strategy')} on {spec.get('ticker')}",
+                })
+                ctx.logger.info("Hop 1 complete [%s]: Parsed %s on %s in %.0fms", req_id, spec.get("strategy"), spec.get("ticker"), t1_ms)
 
             # --- HOP 2: MARKET DATA AGENT ---
             t2_start = time.perf_counter()
@@ -647,7 +766,7 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage) -> None:
             )
             session_store.update_partial_spec(sender, None)
 
-            # Store in Card Result Cache
+            # Store in Card Result Cache and Bounded Session (Last 5 reports)
             card_cache.store(
                 result_id=req_id,
                 spec=spec,
@@ -655,6 +774,17 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage) -> None:
                 audit=audit_report,
                 full_text=final_report_text,
             )
+            recent_reports = sess.setdefault("recent_reports", collections.OrderedDict())
+            recent_reports[req_id] = {
+                "spec": spec,
+                "backtest": bt_res.result,
+                "audit": audit_report,
+                "full_text": final_report_text,
+                "report_view": ReportView.from_results(spec, bt_res.result, audit_report),
+                "created_at": time.time(),
+            }
+            while len(recent_reports) > 5:
+                recent_reports.popitem(last=False)
             sess["last_result_id"] = req_id
 
             t5_ms = (time.perf_counter() - t_start) * 1000
@@ -663,11 +793,28 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage) -> None:
 
             # Deliver response (with Interactive Results Card if enabled and validated)
             if are_cards_enabled() and not audit_report.get("unvalidated"):
-                results_card = create_results_card(req_id, spec, bt_res.result, audit_report)
-                await ctx.send(
-                    sender,
-                    ChatMessage(content=[TextContent(type="text", text=final_report_text), results_card]),
-                )
+                try:
+                    results_card = create_results_card(req_id, spec, bt_res.result, audit_report)
+                    tot_ret = float(bt_res.result.get("total_return", 0.0)) * 100.0
+                    sharpe = float(bt_res.result.get("sharpe", 0.0))
+                    max_dd = abs(float(bt_res.result.get("max_drawdown", 0.0))) * 100.0
+                    verdict = audit_report.get("verdict", "UNVALIDATED").upper()
+                    summary_text = (
+                        f"🛡️ TrustTest Verdict: [{verdict}] on {spec.get('ticker')}\n"
+                        f"• Total Return: {tot_ret:+.1f}%\n"
+                        f"• Sharpe Ratio: {sharpe:.2f}\n"
+                        f"• Max Drawdown: -{max_dd:.1f}%\n\n"
+                        "Tap 'See audit details' below or type 'full report' for the complete text report."
+                    )
+                    if example_label:
+                        summary_text = f"*{example_label}*\n\n" + summary_text
+                    await ctx.send(
+                        sender,
+                        ChatMessage(content=[TextContent(type="text", text=summary_text), results_card]),
+                    )
+                except Exception as card_err:
+                    ctx.logger.warning("Failed to construct or deliver results card [%s]: %s. Sending text fallback.", req_id, card_err)
+                    await ctx.send(sender, create_text_chat(final_report_text))
             else:
                 await ctx.send(sender, create_text_chat(final_report_text))
 

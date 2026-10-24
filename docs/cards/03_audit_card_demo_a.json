@@ -1,0 +1,56 @@
+{
+  "card_kind": "detail",
+  "card_protocol_version": "1",
+  "card_payload": {
+    "title": "Adversarial Audit: RELIANCE.NS [LIKELY OVERFIT]",
+    "summary_rows": [
+      {
+        "label": "[PASS] Out Of Sample",
+        "value": "OOS Sharpe is 0.09 (holds >= 50% of in-sample 0.03)."
+      },
+      {
+        "label": "[FAIL] Parameter Perturbation",
+        "value": "Only 42% of neighbours held (needed 70%, worst collapsed to -0.23)."
+      },
+      {
+        "label": "[FAIL] Cost Sensitivity",
+        "value": "With 2x friction, Sharpe dropped to 0.03 and CAGR to -0.5%."
+      },
+      {
+        "label": "[FAIL] Random Baseline",
+        "value": "Only beats 30.4% of 500 random baselines (needs >= 95.0%, 95th %ile was 0.62)."
+      },
+      {
+        "label": "\u26a0\ufe0f Warnings",
+        "value": "Low trade count (4 trades): limited statistical significance; High friction drag: alpha collapses under realistic brokerage"
+      },
+      {
+        "label": "Survivorship Bias",
+        "value": "Constituent survivorship applies. Delisted tickers excluded."
+      },
+      {
+        "label": "Disclaimer",
+        "value": "Trustworthy means survived these tests, not that it will make money. Educational only, not investment advice."
+      }
+    ],
+    "ctas": [
+      {
+        "label": "Back to results",
+        "selection": {
+          "source": "trusttest",
+          "action": "show_results",
+          "report_id": "demo-a-sample-id"
+        },
+        "primary": true
+      },
+      {
+        "label": "Try an example",
+        "selection": {
+          "source": "trusttest",
+          "action": "show_examples"
+        },
+        "primary": false
+      }
+    ]
+  }
+}

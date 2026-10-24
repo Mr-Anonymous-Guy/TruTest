@@ -2,7 +2,7 @@
 
 ![tag:innovationlab](https://img.shields.io/badge/innovationlab-3D8BD3)
 ![tag:hackathon](https://img.shields.io/badge/hackathon-5F43F1)
-![tests:68 passed](https://img.shields.io/badge/tests-68%20passed-brightgreen)
+![tests:71 passed](https://img.shields.io/badge/tests-71%20passed-brightgreen)
 ![uagents:0.26.1](https://img.shields.io/badge/uagents-0.26.1-blue)
 ![protocol:ACP--0.3.0](https://img.shields.io/badge/protocol-ACP--0.3.0-orange)
 ![python:3.11+](https://img.shields.io/badge/python-3.11+-blue)
@@ -245,20 +245,58 @@ Use these concrete fault flags and manual actions to record the reliability show
 
 TrustTest natively supports the **ASI:One Cards Protocol v1** over `MetadataContent` for a premium, app-like mobile and desktop UX:
 
-- **Strategy Picker Carousel:** Tap `"hi"` in ASI:One to receive an interactive card carousel with one-tap execution for Demo A, Demo B, or opening the custom parameter builder.
-- **Headline Results Card:** Displays ticker, parameters, total return, Sharpe ratio, drawdown, and Skeptic verdict badge with one-tap `"See Audit Details"` navigation.
-- **Adversarial Breakdown Card:** Deep-dive card listing Out-of-sample, Cost drag, Perturbation, and Monte Carlo benchmarks.
-- **Interactive Form Card:** Custom strategy configurator with field validation (fast MA < slow MA).
-- **Fast Tab Toggling:** In-memory `CardResultCache` allows instant back-and-forth toggling between Results and Audit cards without redundant simulation.
-- **Card Playground Schemas:** Exported schema files in `docs/cards/*.json` (`picker_card.json`, `results_card.json`, `audit_card.json`, `form_card.json`) for testing at [asi1.ai/developer/card-playground](https://asi1.ai/developer/card-playground).
-- **Zero-Downtime Fallback:** Toggle `TRUSTTEST_CARDS=off` to revert cleanly to a 100% plain-text experience.
+### 1. The 4 Cards Implemented
+1. **Strategy Picker Carousel Card (`carousel`):**
+   - Triggered on greeting (`hi`, `hello`, `start`, `help`, or `show_examples` action).
+   - Presents 3 actionable benchmark items:
+     - **Demo A:** Sensible 50/200 MA on RELIANCE.NS (`[Trustworthy Benchmark]` badge).
+     - **Demo B:** Over-tuned 23/35 MA on RELIANCE.NS (`[Likely Overfit]` badge).
+     - **Demo C:** 14-period RSI Mean-Reversion on TCS.NS (`[RSI Mean-Reversion]` badge).
+   - One-tap buttons send `{"source": "trusttest", "action": "run_example", "example_id": "..."}` resolved securely **server-side** (never trusting client specs).
+2. **Headline Results Card (`detail`):**
+   - Displays ticker, parameters, date range, total return, CAGR, Sharpe ratio, drawdown, trades, win rate, and Skeptic verdict badge (`🛡️ [TRUSTWORTHY]`, `⚠️ [LIKELY OVERFIT]`, `⚠️ [FRAGILE]`).
+   - Sells the demo contrast: headline return displayed right next to the out-of-sample result (`Return vs OOS`).
+   - CTAs: `"See audit details"`, `"Full text report"`, `"Try an example"`.
+3. **Audit Details Breakdown Card (`detail`):**
+   - Explicit breakdown of the 4 adversarial attacks: Out-of-sample split, Parameter stability perturbation, 2x cost friction sensitivity, and Monte Carlo random entry baseline.
+   - Text status labels on every test: `[PASS]` or `[FAIL]` with one-line explanation.
+   - Includes trade count warning, constituent survivorship bias note, and educational disclaimer.
+   - CTAs: `"Back to results"`, `"Try an example"`.
+4. **Parameter Form Card (`form`):**
+   - Sent when Parser detects missing fields or via custom strategy builder.
+   - Pre-filled fields for ticker selection, fast/slow windows, and duration.
+   - Client validation check (e.g. fast window < slow window); re-shown at most twice with specific error before falling back to text.
+
+### 2. User Flow: The Good-vs-Overfit Showcase
+1. Send `"hi"` in ASI:One chat -> Orchestrator delivers welcome greeting + **Strategy Picker Carousel Card**.
+2. Tap **"Run Demo A"** -> Pipeline executes institutional benchmark -> Deliver **Results Card** with `[TRUSTWORTHY]` badge.
+3. Tap **"See audit details"** -> Instant navigation to **Audit Details Card** showing 4 `[PASS]` marks.
+4. Tap **"Try an example"** -> Tap **"Run Demo B"** -> Deliver **Results Card** showing high backtest returns that collapse under audit with `[LIKELY OVERFIT]` badge.
+5. Tap **"See audit details"** -> Observe multiple `[FAIL]` marks under perturbation and friction drag.
+
+### 3. Reliability & Fallbacks
+- **Zero-Downtime Kill Switch:** Setting `TRUSTTEST_CARDS=off` in `.env` cleanly switches the orchestrator into 100% text-only mode.
+- **Card Builder Exception Guard:** If any exception occurs while building a card, the orchestrator immediately catches it, logs a warning, and delivers the complete text report. A card can never cause a crash or lost message.
+- **Text Commands:** Users can type `full report` or `details` at any time to get the complete text report, and `status` for live health checks.
+- **Card Result Cache & Session Store:** The last 5 reports per sender are preserved in a bounded session store (with 30-min idle TTL) enabling fast card toggling without redundant simulations.
+
+### 4. Screenshot Checklist (For Submission & Demo)
+- [ ] `docs/screenshots/01_asi1_strategy_picker.png` – Carousel card on greeting.
+- [ ] `docs/screenshots/02_asi1_results_card_demo_a.png` – Results card with Trustworthy badge.
+- [ ] `docs/screenshots/03_asi1_audit_card_demo_a.png` – Audit details card for Demo A.
+- [ ] `docs/screenshots/04_asi1_results_card_demo_b.png` – Results card for Demo B (overfit).
+- [ ] `docs/screenshots/05_asi1_parameter_form.png` – Interactive parameter form card.
+- [ ] `docs/screenshots/06_asi1_status_health.png` – Live `status` health ping table in ASI:One.
 
 ---
 
-## 💰 Future Monetization Plan
+## 💰 Future Work & Monetization (Payment Protocol)
 
-- **Free Tier:** Instant lookahead-free quantitative backtest and standard metrics (Total Return, Sharpe, Drawdown, Trades).
-- **Paid Tier (Micropayments via Fetch.ai Payment Protocol):** Adversarial Skeptic quant audit (Monte Carlo 1,000 runs, 2x cost friction drag, parameter perturbation stability, and definitive verdict).
+- **Phase 6 (Payment Protocol):** Not attempted in hackathon MVP to focus exclusively on multi-agent adversarial audit reliability and UX.
+- **Production Monetization Architecture:**
+  - **Free Tier:** Natural-language parsing, lookahead-free quantitative backtest, and basic metrics (Total Return, Sharpe, Drawdown, Trades).
+  - **Paid Tier (Micropayments via Fetch.ai Payment Protocol):** Adversarial Skeptic quant audit (Monte Carlo 1,000 runs, 2x cost friction drag, parameter perturbation stability, and definitive verdict).
+  - **Whale/Institutional Tier:** Automated multi-asset basket auditing, survivorship-bias point-in-time constituent data, and custom risk models.
 
 ---
 
