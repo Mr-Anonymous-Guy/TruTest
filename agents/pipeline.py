@@ -64,24 +64,30 @@ def format_final_reply(
     lines.append(f"  • Trade Count: {trades} trades | Win Rate: {win_rate:.1f}% | Exposure: {exposure:.1f}%")
 
     # Skeptic Adversarial Findings
-    tests = audit.get("tests", [])
-    lines.append(f"\nAdversarial Skeptic Audit:")
-    for t in tests:
-        name = t.get("name", "").replace("_", " ").title()
-        passed = "PASS" if t.get("passed") else "FAIL"
-        explanation = t.get("explanation", "")
-        lines.append(f"  • {name}: [{passed}] {explanation}")
+    if audit.get("verdict") == "UNVALIDATED":
+        lines.append(f"\nAdversarial Skeptic Audit:")
+        lines.append(f"  ⚠️ {audit.get('note', 'Skeptic adversarial auditor was unavailable. Results are unvalidated.')}")
+        lines.append(f"\nFINAL VERDICT: UNVALIDATED (Audit agent offline)")
+    else:
+        tests = audit.get("tests", [])
+        lines.append(f"\nAdversarial Skeptic Audit:")
+        for t in tests:
+            name = t.get("name", "").replace("_", " ").title()
+            passed = "PASS" if t.get("passed") else "FAIL"
+            explanation = t.get("explanation", "")
+            lines.append(f"  • {name}: [{passed}] {explanation}")
 
-    # Warnings
-    warnings = audit.get("warnings", [])
-    if warnings:
-        lines.append("\nWarnings:")
-        for w in warnings:
-            lines.append(f"  ⚠️ {w}")
+        # Warnings
+        warnings = audit.get("warnings", [])
+        if warnings:
+            lines.append("\nWarnings:")
+            for w in warnings:
+                lines.append(f"  ⚠️ {w}")
 
-    # Final Verdict & Disclaimers
-    verdict = audit.get("verdict", "Fragile").upper()
-    lines.append(f"\nFINAL VERDICT: {verdict}")
+        # Final Verdict & Disclaimers
+        verdict = audit.get("verdict", "Fragile").upper()
+        lines.append(f"\nFINAL VERDICT: {verdict}")
+
     lines.append("\nNote: Past performance is subject to survivorship and selection bias.")
     lines.append("'Trustworthy' means survived these tests, not that it will make money.")
     lines.append("Educational only, not investment advice.")
@@ -101,8 +107,17 @@ class SessionManager:
                 "stage": "idle",
                 "partial_spec": None,
                 "history": [],
+                "busy": False,
             }
         return self._sessions[sender]
+
+    def is_busy(self, sender: str) -> bool:
+        sess = self.get_or_create(sender)
+        return bool(sess.get("busy", False))
+
+    def set_busy(self, sender: str, busy: bool) -> None:
+        sess = self.get_or_create(sender)
+        sess["busy"] = busy
 
     def update_partial_spec(self, sender: str, partial_spec: Optional[Dict[str, Any]]) -> None:
         sess = self.get_or_create(sender)

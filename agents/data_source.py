@@ -11,6 +11,7 @@ Order of operations:
 from __future__ import annotations
 
 import logging
+import os
 from typing import Optional, Tuple
 import pandas as pd
 
@@ -36,6 +37,12 @@ def fetch_prices(
     df: Optional[pd.DataFrame] = None
     source = "live"
     note: Optional[str] = None
+
+    # Check for fault injection (Phase 4 testing)
+    if os.getenv("TRUSTTEST_FAULT") == "data_live_fail":
+        logger.warning("[FAULT INJECTION] TRUSTTEST_FAULT=data_live_fail active: bypassing live yfinance, forcing cached CSV fallback.")
+        enable_live = False
+        note = "Simulated live data failure (TRUSTTEST_FAULT=data_live_fail); used local cached data."
 
     # 1. Attempt live yfinance if enabled
     if enable_live:
@@ -68,7 +75,10 @@ def fetch_prices(
 
             df = cached_df
             source = "cache"
-            note = f"Used cached historical CSV data ({len(df)} bars)."
+            if os.getenv("TRUSTTEST_FAULT") == "data_live_fail":
+                note = f"Simulated live data failure (TRUSTTEST_FAULT=data_live_fail); used local cached data ({len(df)} bars)."
+            else:
+                note = f"Used cached historical CSV data ({len(df)} bars)."
         except DataQualityError:
             raise
         except Exception as e:

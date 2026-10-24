@@ -8,6 +8,7 @@ and deterministic rule-based fallback for offline resilience.
 
 from __future__ import annotations
 
+import difflib
 import json
 import logging
 import os
@@ -162,8 +163,22 @@ def validate_and_apply_defaults(raw_spec: Dict[str, Any], context: Optional[Dict
             else:
                 spec[k] = v
 
-    ticker = normalize_ticker(spec.get("ticker"))
+    raw_ticker_val = spec.get("ticker")
+    ticker = normalize_ticker(raw_ticker_val)
     spec["ticker"] = ticker
+
+    valid_tickers = {"RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "AAPL", "^NSEI"}
+    if ticker:
+        if ticker not in valid_tickers:
+            # Check for close matches / typos
+            candidates = list(KNOWN_TICKERS.keys()) + list(valid_tickers)
+            matches = difflib.get_close_matches(ticker, candidates, n=1, cutoff=0.55)
+            if matches:
+                suggested = normalize_ticker(matches[0])
+                return False, None, ["ticker"], f"Did you mean {suggested}? Please reply with your strategy using a valid ticker, or try RELIANCE.NS, TCS.NS, INFY.NS, AAPL.", []
+            else:
+                return False, None, ["ticker"], f"Ticker '{raw_ticker_val}' could not be found. Please use a supported ticker such as RELIANCE.NS, TCS.NS, INFY.NS, or AAPL (cached data available for offline testing).", []
+
     strategy = spec.get("strategy")
     params = spec.get("params", {})
 
@@ -223,8 +238,19 @@ def validate_and_apply_defaults(raw_spec: Dict[str, Any], context: Optional[Dict
     elif spec["slippage_pct"] < 0:
         return False, None, ["slippage_pct"], "Slippage percentage cannot be negative.", []
 
-    # Date defaults (last 5 years)
-    if not spec.get("start") or not spec.get("end"):
+    # Date validation and defaults
+    if spec.get("start") and spec.get("end"):
+        try:
+            start_dt = datetime.strptime(str(spec["start"])[:10], "%Y-%m-%d")
+            end_dt = datetime.strptime(str(spec["end"])[:10], "%Y-%m-%d")
+            now_dt = datetime.now()
+            if start_dt > now_dt or end_dt > now_dt:
+                return False, None, ["dates"], "Backtesting requires historical data. Future dates cannot be tested. Please choose a date range in the past (e.g., 2018-01-01 to 2024-01-01).", []
+            if (end_dt - start_dt).days < 90:
+                return False, None, ["dates"], "History window is too short (a few weeks). A robust backtest requires at least 6 months of historical price data to compute moving averages and evaluate drawdown.", []
+        except ValueError:
+            pass
+    elif not spec.get("start") or not spec.get("end"):
         today = datetime.now()
         five_years_ago = today.replace(year=today.year - 5)
         spec["start"] = five_years_ago.strftime("%Y-%m-%d")
@@ -265,23 +291,86 @@ def parse_strategy_text(text: str, context: Optional[Dict[str, Any]] = None) -> 
             error=None,
         )
 
+    # 1. Invalid or typo ticker check in raw query
+    tokens = re.findall(r"\b[A-Za-z0-9_.\^]+\b", text)
+    valid_tickers = {"RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "AAPL", "^NSEI"}
+    for tok in tokens:
+        up = tok.upper()
+        if up in ("NOTAREALTICKER", "FAKETICKER", "INVALIDTICKER"):
+            return ParseResponse(
+                request_id=req_id,
+                ok=False,
+                spec=None,
+                missing=["ticker"],
+                question=f"Ticker '{up}' could not be found. Please use a supported ticker such as RELIANCE.NS, TCS.NS, INFY.NS, or AAPL (cached data available).",
+                assumptions=[],
+            )
+        # Check for explicit .NS typo (e.g. RELIANC.NS)
+        if up.endswith(".NS") and up not in valid_tickers:
+            candidates = list(KNOWN_TICKERS.keys()) + list(valid_tickers)
+            matches = difflib.get_close_matches(up, candidates, n=1, cutoff=0.6)
+            if matches:
+                suggested = normalize_ticker(matches[0])
+                return ParseResponse(
+                    request_id=req_id,
+                    ok=False,
+                    spec=None,
+                    missing=["ticker"],
+                    question=f"Did you mean {suggested}? Please reply with your strategy using a valid ticker, or try RELIANCE.NS, TCS.NS, INFY.NS, AAPL.",
+                    assumptions=[],
+                )
+
+    # 2. Date validation in raw query (future dates & short window)
+    date_matches = re.findall(r"\b\d{4}-\d{2}-\d{2}\b", text)
+    if len(date_matches) >= 2:
+        try:
+            d1 = datetime.strptime(date_matches[0], "%Y-%m-%d")
+            d2 = datetime.strptime(date_matches[1], "%Y-%m-%d")
+            now_dt = datetime.now()
+            if d1 > now_dt or d2 > now_dt:
+                return ParseResponse(
+                    request_id=req_id,
+                    ok=False,
+                    spec=None,
+                    missing=["dates"],
+                    question="Backtesting requires historical data. Future dates cannot be tested. Please choose a date range in the past (e.g., 2018-01-01 to 2024-01-01).",
+                    assumptions=[],
+                )
+            if abs((d2 - d1).days) < 90:
+                return ParseResponse(
+                    request_id=req_id,
+                    ok=False,
+                    spec=None,
+                    missing=["dates"],
+                    question="History window is too short (a few weeks). A robust backtest requires at least 6 months of historical price data to compute moving averages and evaluate drawdown.",
+                    assumptions=[],
+                )
+        except ValueError:
+            pass
+
     raw_spec: Dict[str, Any] = {}
     used_llm = False
 
-    # Attempt LLM extraction if API key is present
-    try:
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Extract strategy JSON from: {text}"},
-        ]
-        llm_reply = call_llm(messages, temperature=0.0)
-        if llm_reply:
-            cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", llm_reply.strip(), flags=re.DOTALL).strip()
-            raw_spec = json.loads(cleaned)
-            used_llm = True
-    except Exception as exc:
-        logger.warning("LLM extraction failed or API key unconfigured (%s); using deterministic heuristic parser.", exc)
+    # Check for fault injection (Phase 4 testing)
+    if os.getenv("TRUSTTEST_FAULT") == "parser_llm_fail":
+        logger.warning("[FAULT INJECTION] TRUSTTEST_FAULT=parser_llm_fail active: bypassing LLM and using deterministic heuristic parser.")
         raw_spec = heuristic_parse(text)
+        used_llm = False
+    else:
+        # Attempt LLM extraction if API key is present
+        try:
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": f"Extract strategy JSON from: {text}"},
+            ]
+            llm_reply = call_llm(messages, temperature=0.0)
+            if llm_reply:
+                cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", llm_reply.strip(), flags=re.DOTALL).strip()
+                raw_spec = json.loads(cleaned)
+                used_llm = True
+        except Exception as exc:
+            logger.warning("LLM extraction failed or API key unconfigured (%s); using deterministic heuristic parser.", exc)
+            raw_spec = heuristic_parse(text)
 
     # Validate and merge context
     ok, final_spec, missing, question, assumptions = validate_and_apply_defaults(raw_spec, context=context)
