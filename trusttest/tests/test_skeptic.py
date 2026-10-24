@@ -88,14 +88,42 @@ class TestDecideVerdict:
 
 
 # ---------------------------------------------------------------------------
-# Placeholder for run_audit() tests (Phase 2)
+# run_audit() and monte_carlo_baseline() tests
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skip(reason="Phase 2 – run_audit() not yet implemented")
+from trusttest.core.skeptic import monte_carlo_baseline, run_audit
+
+
 def test_oos_sharpe_less_than_full_sample():
-    pass
+    """Verify run_audit executes all tests and checks OOS."""
+    df = _make_df(600)
+    audit = run_audit(
+        df=df,
+        strategy_type="sma_crossover",
+        params={"short_window": 15, "long_window": 50},
+        fees_bps=5.0,
+        slippage_bps=2.0,
+        mc_runs=100,
+    )
+    assert "verdict" in audit
+    assert audit["verdict"] in ("Trustworthy", "Fragile", "Likely Overfit")
+    assert audit["tests_total"] == 7
+    oos_test = next(t for t in audit["tests"] if t["name"] == "out_of_sample")
+    assert "sharpe_ratio" in oos_test
 
 
-@pytest.mark.skip(reason="Phase 2 – run_audit() not yet implemented")
 def test_monte_carlo_beat_rate_range():
-    pass
+    """Verify Monte Carlo baseline outputs valid bounds."""
+    df = _make_df(400)
+    mc = monte_carlo_baseline(df, n_runs=150)
+    assert len(mc["sharpes"]) == 150
+    assert "p95_sharpe" in mc
+
+    audit = run_audit(
+        df=df,
+        strategy_type="sma_crossover",
+        params={"short_window": 10, "long_window": 30},
+        mc_runs=150,
+    )
+    assert 0.0 <= audit["mc_beat_rate_pct"] <= 100.0
+

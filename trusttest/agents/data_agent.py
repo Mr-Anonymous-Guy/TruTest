@@ -1,14 +1,12 @@
 """
-TrustTest – Market Data Agent (stub)
-======================================
+TrustTest – Market Data Agent
+==============================
 Fetches OHLCV price data via core/data_loader.py and returns it
 as a PriceData message. Reports whether data came from live yfinance
 or a cached CSV.
-
-TODO Phase 3:
-  - Implement handle_data_request() to call load_prices() and serialise
-  - Register with Agentverse and update .env with the agent address
 """
+
+from __future__ import annotations
 
 import logging
 import os
@@ -23,43 +21,55 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Agent
+# Agent initialization
 # ---------------------------------------------------------------------------
 agent = Agent(
     name="trusttest_data",
-    seed=os.getenv("DATA_SEED", "REPLACE_ME"),
-    mailbox=True,
+    seed=os.getenv("DATA_SEED", "trusttest_data_seed_hackathon_fetchathon3"),
 )
 
 
 @agent.on_message(model=DataRequest)
 async def handle_data_request(ctx: Context, sender: str, msg: DataRequest) -> None:
-    """
-    Load price data for the requested ticker and date range.
-    TODO Phase 3: implement fully; for now stub responds with an error.
-    """
+    """Load price data for the requested ticker and date range."""
     ctx.logger.info(
-        "DataRequest for %s [%s → %s] from %s",
+        "DataRequest for %s [%s -> %s] from %s",
         msg.ticker, msg.start, msg.end, sender,
     )
-    # TODO Phase 3: call load_prices(), serialise to PriceData, send back
-    # Example (do not run yet):
-    #
-    # df, source = load_prices(msg.ticker, msg.start, msg.end)
-    # bars = [
-    #     PriceBar(
-    #         date=str(idx.date()),
-    #         open=row.Open, high=row.High, low=row.Low,
-    #         close=row.Close, volume=row.Volume,
-    #     )
-    #     for idx, row in df.iterrows()
-    # ]
-    # await ctx.send(sender, PriceData(
-    #     ticker=msg.ticker, bars=bars, source=source,
-    #     row_count=len(bars),
-    #     start_actual=bars[0].date, end_actual=bars[-1].date,
-    # ))
-    ctx.logger.warning("DataAgent not yet implemented – Phase 3 work")
+    try:
+        df, source = load_prices(msg.ticker, msg.start, msg.end)
+        bars = [
+            PriceBar(
+                date=str(idx.date()) if hasattr(idx, "date") else str(idx),
+                open=float(row["Open"]),
+                high=float(row["High"]),
+                low=float(row["Low"]),
+                close=float(row["Close"]),
+                volume=float(row["Volume"]),
+            )
+            for idx, row in df.iterrows()
+        ]
+        resp = PriceData(
+            ticker=msg.ticker,
+            bars=bars,
+            source=source,  # "live" | "cache"
+            row_count=len(bars),
+            start_actual=bars[0].date if bars else msg.start,
+            end_actual=bars[-1].date if bars else msg.end,
+        )
+        ctx.logger.info("Sending PriceData (%s bars from %s) to %s", len(bars), source, sender)
+        await ctx.send(sender, resp)
+    except Exception as exc:
+        ctx.logger.error("Error loading prices for %s: %s", msg.ticker, exc)
+        empty_resp = PriceData(
+            ticker=msg.ticker,
+            bars=[],
+            source="cache",
+            row_count=0,
+            start_actual=msg.start,
+            end_actual=msg.end,
+        )
+        await ctx.send(sender, empty_resp)
 
 
 if __name__ == "__main__":

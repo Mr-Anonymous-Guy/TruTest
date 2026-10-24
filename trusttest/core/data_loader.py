@@ -11,11 +11,16 @@ DataFrame columns: Date (index), Open, High, Low, Close, Volume
 import logging
 import os
 import time
+import warnings
 from pathlib import Path
 from typing import Tuple
 
 import pandas as pd
 import yfinance as yf
+
+# Suppress yfinance internal Pandas deprecation warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
 
 logger = logging.getLogger(__name__)
 
