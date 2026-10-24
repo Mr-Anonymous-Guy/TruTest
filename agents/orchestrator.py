@@ -481,7 +481,10 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage) -> None:
             return
 
         # Form opener command
-        if cleaned_text in ("backtest a moving average strategy", "configure strategy", "open form", "create strategy"):
+        if cleaned_text in (
+            "form", "open form", "configure", "configure strategy", "custom", "custom strategy",
+            "backtest a moving average strategy", "create strategy", "parameters", "/form"
+        ):
             if are_cards_enabled():
                 form_card = create_parameter_form_card()
                 await ctx.send(sender, ChatMessage(content=[TextContent(type="text", text="Configure your custom strategy parameters below:"), form_card]))

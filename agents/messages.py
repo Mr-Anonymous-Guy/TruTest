@@ -9,8 +9,11 @@ from __future__ import annotations
 
 # Greetings & Help
 WELCOME_GREETING = (
-    "TrustTest is online. Tell me a trading strategy in plain English (e.g. 'Backtest 50/200 MA cross on RELIANCE.NS') "
-    "and I'll run a lookahead-free backtest and an adversarial Skeptic audit. (Educational only, not investment advice.)"
+    "🛡️ TrustTest is online!\n\n"
+    "• 💬 Chat naturally: Describe any trading strategy in plain English (e.g. 'Backtest 50/200 MA cross on RELIANCE.NS' or 'RSI 14 on TCS.NS').\n"
+    "• 🎛️ Custom inputs: Type 'form' or tap 'Open Form' in the carousel below to test your own custom parameters.\n"
+    "• 📊 Benchmarks: Select Demo A, B, or C below for instant verified examples.\n\n"
+    "I'll fetch real market data, run a lookahead-free backtest, and perform an adversarial Skeptic audit in real time. (Educational only, not investment advice.)"
 )
 
 # Concurrency & Rate Limiting
