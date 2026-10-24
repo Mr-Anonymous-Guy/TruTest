@@ -18,7 +18,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.abspath(str(Path(__file__).resolve().parent.parent)))
 
 from dotenv import load_dotenv
-from uagents import Agent, Context
+from uagents import Agent, Context, Protocol
 
 from agents.data_source import fetch_prices
 from agents.faults import check_and_log_faults_startup, is_fault_active
@@ -41,11 +41,17 @@ agent = Agent(
     publish_agent_details=True,
 )
 
+# ---------------------------------------------------------------------------
+# Protocols
+# ---------------------------------------------------------------------------
+health_proto = Protocol(name="HealthCheckProtocol", version="1.0")
+data_proto = Protocol(name="MarketDataProtocol", version="1.0")
+
 _start_time = time.time()
 check_and_log_faults_startup("trusttest_data")
 
 
-@agent.on_message(model=HealthRequest)
+@health_proto.on_message(model=HealthRequest, replies={HealthResponse})
 async def handle_health_check(ctx: Context, sender: str, msg: HealthRequest) -> None:
     """Respond to health ping with uptime and status."""
     uptime = round(time.time() - _start_time, 1)
@@ -61,7 +67,7 @@ async def handle_health_check(ctx: Context, sender: str, msg: HealthRequest) -> 
     )
 
 
-@agent.on_message(model=DataRequest)
+@data_proto.on_message(model=DataRequest, replies={PriceData})
 async def handle_data_request(ctx: Context, sender: str, msg: DataRequest) -> None:
     """Handle incoming DataRequest and reply with PriceData without raising."""
     t0 = time.perf_counter()
@@ -165,6 +171,13 @@ async def handle_data_request(ctx: Context, sender: str, msg: DataRequest) -> No
             error=str(exc),
         )
         await ctx.send(sender, err_reply)
+
+
+# ---------------------------------------------------------------------------
+# Include protocols in agent
+# ---------------------------------------------------------------------------
+agent.include(health_proto, publish_manifest=True)
+agent.include(data_proto, publish_manifest=True)
 
 
 if __name__ == "__main__":

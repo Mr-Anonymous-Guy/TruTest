@@ -18,7 +18,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.abspath(str(Path(__file__).resolve().parent.parent)))
 
 from dotenv import load_dotenv
-from uagents import Agent, Context
+from uagents import Agent, Context, Protocol
 
 from agents.faults import check_and_log_faults_startup, is_fault_active, maybe_inject_fault
 from agents.models import (
@@ -48,6 +48,12 @@ agent = Agent(
     publish_agent_details=True,
 )
 
+# ---------------------------------------------------------------------------
+# Protocols
+# ---------------------------------------------------------------------------
+health_proto = Protocol(name="HealthCheckProtocol", version="1.0")
+skeptic_proto = Protocol(name="SkepticAuditorProtocol", version="1.0")
+
 _start_time = time.time()
 check_and_log_faults_startup("trusttest_skeptic")
 
@@ -73,7 +79,7 @@ def execute_audit(spec_dict: dict, prices_dict: dict) -> dict:
     return report.to_dict()
 
 
-@agent.on_message(model=HealthRequest)
+@health_proto.on_message(model=HealthRequest, replies={HealthResponse})
 async def handle_health_check(ctx: Context, sender: str, msg: HealthRequest) -> None:
     """Respond to health ping with uptime and status."""
     uptime = round(time.time() - _start_time, 1)
@@ -89,7 +95,7 @@ async def handle_health_check(ctx: Context, sender: str, msg: HealthRequest) -> 
     )
 
 
-@agent.on_message(model=AuditRequest)
+@skeptic_proto.on_message(model=AuditRequest, replies={AuditResponse})
 async def handle_audit_request(ctx: Context, sender: str, msg: AuditRequest) -> None:
     """Handle AuditRequest and return AuditResponse with full adversarial findings."""
     ticker = msg.spec.get("ticker", "UNKNOWN") if isinstance(msg.spec, dict) else "UNKNOWN"
@@ -149,6 +155,13 @@ async def handle_audit_request(ctx: Context, sender: str, msg: AuditRequest) -> 
             error=str(exc),
         )
         await ctx.send(sender, reply)
+
+
+# ---------------------------------------------------------------------------
+# Include protocols in agent
+# ---------------------------------------------------------------------------
+agent.include(health_proto, publish_manifest=True)
+agent.include(skeptic_proto, publish_manifest=True)
 
 
 if __name__ == "__main__":

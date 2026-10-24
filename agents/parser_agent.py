@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 sys.path.insert(0, os.path.abspath(str(Path(__file__).resolve().parent.parent)))
 
 from dotenv import load_dotenv
-from uagents import Agent, Context
+from uagents import Agent, Context, Protocol
 
 from agents.faults import check_and_log_faults_startup, is_fault_active
 from agents.llm import call_llm, clean_llm_json_response, is_circuit_open
@@ -46,11 +46,17 @@ agent = Agent(
     publish_agent_details=True,
 )
 
+# ---------------------------------------------------------------------------
+# Protocols
+# ---------------------------------------------------------------------------
+health_proto = Protocol(name="HealthCheckProtocol", version="1.0")
+parser_proto = Protocol(name="StrategyParserProtocol", version="1.0")
+
 _start_time = time.time()
 check_and_log_faults_startup("trusttest_parser")
 
 
-@agent.on_message(model=HealthRequest)
+@health_proto.on_message(model=HealthRequest, replies={HealthResponse})
 async def handle_health_check(ctx: Context, sender: str, msg: HealthRequest) -> None:
     """Respond to health ping with uptime and status."""
     uptime = round(time.time() - _start_time, 1)
@@ -443,7 +449,7 @@ def parse_strategy_text(text: str, context: Optional[Dict[str, Any]] = None) -> 
     )
 
 
-@agent.on_message(model=ParseRequest)
+@parser_proto.on_message(model=ParseRequest, replies={ParseResponse})
 async def handle_parse_request(ctx: Context, sender: str, msg: ParseRequest) -> None:
     """Handle ParseRequest from Orchestrator and return ParseResponse."""
     ctx.logger.info("Received ParseRequest [%s] from %s: '%s'", msg.request_id, sender, msg.text)
@@ -471,6 +477,13 @@ async def handle_parse_request(ctx: Context, sender: str, msg: ParseRequest) -> 
             error=str(exc),
         )
         await ctx.send(sender, err_res)
+
+
+# ---------------------------------------------------------------------------
+# Include protocols in agent
+# ---------------------------------------------------------------------------
+agent.include(health_proto, publish_manifest=True)
+agent.include(parser_proto, publish_manifest=True)
 
 
 if __name__ == "__main__":
