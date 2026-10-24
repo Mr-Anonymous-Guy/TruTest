@@ -59,13 +59,21 @@
 
 ---
 
-## Phase 4 – Reliability ⏱ 0.5 h
+## Phase 4 – Reliability, Fault Tolerance & Tracing ⏱ 0.5 h
 
-- [x] Fallback handling between live yfinance and local cache
-- [x] Hybrid parser ensuring zero-crash offline execution
-- [x] Graceful error messages back to ASI:One
-- [x] Cache warm-up script (`scripts/build_cache.py`) for offline resilience
-- [x] Windows CP1252 stdout encoding safety configuration
+- [x] Pure-Python reliability primitives (`agents/reliability.py`): Error taxonomy (`UserError`, `TransientError`, `InternalError`), `call_with_retry` (1 retry on transient), `RequestBudget` (120s countdown), `MessageDeduplicator` (LRU 2000), `ConcurrencyGuard`, `RateLimiter` (6 req/min), `BoundedSessionStore` (30m TTL, max 1000 items), `sanitize_input`
+- [x] Centralized user-facing copy (`agents/messages.py`)
+- [x] Step-by-step trace logger (`agents/trace.py`) with 5MB log rotation & CLI visualizer (`scripts/show_trace.py`)
+- [x] Worker hardening: `HealthRequest`/`HealthResponse` handlers, input validation, never-raise handlers on all 4 workers
+- [x] Orchestrator `status` health command (fast multi-agent health ping table, no LLM call)
+- [x] Graceful partial results when Skeptic is unavailable/timed out (unvalidated disclaimer, zero made-up numbers)
+- [x] Fault injection framework (`agents/faults.py`): `data_live_fail`, `data_fail`, `backtest_fail`, `skeptic_timeout`, `llm_fail`, `llm_badjson`
+- [x] Market data edge cases: future end date clamped, start in future rejected, start >= end rejected, difflib ticker suggestions
+- [x] LLM resilience: 3-failure circuit breaker (60s open window), transient retries, clean code fence & prose extraction
+- [x] Rule-based fallback parser for offline execution (MA crossover, RSI, years, fees)
+- [x] Supervisor mode in `scripts/run_all.py` with exponential backoff (max 5 restarts per 10m)
+- [x] Timing footer on full pipeline results (`Took 8.4s (parse 2.1, data 0.8, backtest 0.2, audit 5.3)`)
+- [x] Comprehensive test suite expanded to 60 passing tests including soak testing (200 seq + 20 interleaved across 10 senders)
 
 ---
 

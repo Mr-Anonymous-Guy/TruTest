@@ -93,6 +93,23 @@ class AuditResponse(Model):
 
 
 # ---------------------------------------------------------------------------
+# 5. Health Check Models (Phase 4)
+# ---------------------------------------------------------------------------
+
+class HealthRequest(Model):
+    request_id: str
+
+
+class HealthResponse(Model):
+    request_id: str
+    agent_name: str
+    ok: bool
+    version: str = "1.0.0"
+    uptime_s: float = 0.0
+    error: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
 # Conversion Helpers
 # ---------------------------------------------------------------------------
 

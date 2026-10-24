@@ -1,15 +1,18 @@
 """
-scripts/run_all.py – TrustTest Multi-Agent Process Manager
-
-Starts all 5 TrustTest uAgents as background subprocesses, redirecting logs to
-logs/<agent>.log, and prints each agent's Bech32 address and Inspector URL.
-
-Note: In development and for manual mailbox connection, agents can also be started
-individually in separate terminals. This script provides convenient multi-process orchestration.
+scripts/run_all.py – TrustTest Multi-Agent Process Manager & Supervisor (Phase 4)
+================================================================================
+Starts all 5 TrustTest uAgents as supervised background subprocesses:
+  1. Redirects logs to logs/<agent>.log
+  2. Extracts and displays Bech32 addresses and Inspector URLs
+  3. Supervisor Mode: automatically restarts crashed agents with exponential backoff
+     (max 5 restarts per 10 minutes per agent)
+  4. Note: Deterministic seeds ensure restarted agents retain identical addresses.
+     Always verify mailbox reconnection in the agent log after a restart.
 """
 
 from __future__ import annotations
 
+import collections
 import os
 import re
 import signal
@@ -17,6 +20,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Dict, List
 
 # Safe utf-8 output on Windows consoles
 if hasattr(sys.stdout, "reconfigure"):
@@ -61,25 +65,33 @@ def extract_info(log_path: Path) -> tuple[str, str]:
     return address, inspector_url
 
 
+def launch_process(script_path: Path, log_path: Path, python_exe: str) -> subprocess.Popen:
+    """Launch an agent process, appending logs."""
+    log_file = open(log_path, "a", encoding="utf-8")
+    proc = subprocess.Popen(
+        [python_exe, str(script_path)],
+        cwd=str(ROOT),
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
+    )
+    return proc
+
+
 def main():
     print("=" * 80)
-    print("  🛡️  TrustTest Multi-Agent Runner (Fetch-A-Thon 3.0)")
+    print("  🛡️  TrustTest Multi-Agent Runner & Supervisor (Fetch-A-Thon 3.0)")
     print("=" * 80)
-    print("Launching 5 worker agents...")
+    print("Launching 5 worker agents in supervised mode...")
 
     python_exe = sys.executable
-    processes: list[subprocess.Popen] = []
+    processes: List[subprocess.Popen] = []
+    restart_history: Dict[str, collections.deque] = collections.defaultdict(collections.deque)
 
     try:
         for name, script_path, log_path, port in AGENTS:
-            # Truncate old log file
-            log_file = open(log_path, "w", encoding="utf-8")
-            proc = subprocess.Popen(
-                [python_exe, str(script_path)],
-                cwd=str(ROOT),
-                stdout=log_file,
-                stderr=subprocess.STDOUT,
-            )
+            # Clear old log file for fresh run
+            open(log_path, "w", encoding="utf-8").close()
+            proc = launch_process(script_path, log_path, python_exe)
             processes.append(proc)
             print(f"  • Started {name:<12} (PID: {proc.pid}) on port {port} -> {log_path.name}")
 
@@ -89,7 +101,6 @@ def main():
         print("\n" + "=" * 80)
         print("  ACTIVE AGENT ENDPOINTS & INSPECTOR URLS")
         print("=" * 80)
-        fmt = "{:<12} | {:<20} | {:<42}"
 
         for name, _, log_path, port in AGENTS:
             addr, insp = extract_info(log_path)
@@ -98,11 +109,44 @@ def main():
             print(f"  Inspector: {insp}")
 
         print("\n" + "=" * 80)
-        print("All 5 agents running. Press CTRL+C to terminate all processes.")
-        print("=" * 80)
+        print("All 5 agents running in Supervisor mode. Press CTRL+C to terminate.")
+        print("=" * 80 + "\n")
 
+        # Supervisor Monitoring Loop
         while True:
-            time.sleep(1.0)
+            time.sleep(2.0)
+            now = time.time()
+
+            for idx, (name, script_path, log_path, port) in enumerate(AGENTS):
+                p = processes[idx]
+                if p.poll() is not None:
+                    # Process exited!
+                    exit_code = p.returncode
+                    history = restart_history[name]
+
+                    # Purge restarts older than 10 minutes (600s)
+                    while history and (now - history[0]) > 600.0:
+                        history.popleft()
+
+                    if len(history) < 5:
+                        backoff = min(30.0, 2.0 ** len(history))
+                        print(
+                            f"⚠️ [SUPERVISOR] Agent '{name}' exited with code {exit_code}. "
+                            f"Restarting in {backoff:.1f}s (Restart {len(history) + 1}/5 in 10m)..."
+                        )
+                        time.sleep(backoff)
+                        new_proc = launch_process(script_path, log_path, python_exe)
+                        processes[idx] = new_proc
+                        history.append(now)
+                        print(
+                            f"✅ [SUPERVISOR] Agent '{name}' restarted with PID {new_proc.pid}. "
+                            f"Verify mailbox reconnection in logs/{log_path.name}."
+                        )
+                    else:
+                        print(
+                            f"❌ [SUPERVISOR] Agent '{name}' exceeded max 5 restarts within 10 minutes. "
+                            f"Halting restarts. Check logs/{log_path.name}."
+                        )
 
     except KeyboardInterrupt:
         print("\nShutting down all agents...")

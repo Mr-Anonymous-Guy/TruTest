@@ -14,6 +14,7 @@ import logging
 import os
 import re
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -24,8 +25,9 @@ sys.path.insert(0, os.path.abspath(str(Path(__file__).resolve().parent.parent)))
 from dotenv import load_dotenv
 from uagents import Agent, Context
 
-from agents.llm import call_llm
-from agents.models import ParseRequest, ParseResponse
+from agents.faults import check_and_log_faults_startup, is_fault_active
+from agents.llm import call_llm, clean_llm_json_response, is_circuit_open
+from agents.models import HealthRequest, HealthResponse, ParseRequest, ParseResponse
 
 load_dotenv()
 
@@ -43,6 +45,25 @@ agent = Agent(
     mailbox=True,
     publish_agent_details=True,
 )
+
+_start_time = time.time()
+check_and_log_faults_startup("trusttest_parser")
+
+
+@agent.on_message(model=HealthRequest)
+async def handle_health_check(ctx: Context, sender: str, msg: HealthRequest) -> None:
+    """Respond to health ping with uptime and status."""
+    uptime = round(time.time() - _start_time, 1)
+    await ctx.send(
+        sender,
+        HealthResponse(
+            request_id=msg.request_id,
+            agent_name="Strategy Parser",
+            ok=True,
+            version="1.0.0",
+            uptime_s=uptime,
+        ),
+    )
 
 SYSTEM_PROMPT = """You are a trading strategy parsing assistant for the TrustTest quantitative platform.
 Extract structured strategy specifications from plain-English descriptions into valid JSON only.
@@ -136,12 +157,29 @@ def heuristic_parse(text: str) -> Dict[str, Any]:
     date_matches = re.findall(r"\b\d{4}-\d{2}-\d{2}\b", clean_text)
     if len(date_matches) >= 2:
         start, end = date_matches[0], date_matches[1]
+    else:
+        # Check for 'last N years'
+        years_match = re.search(r"FOR\s+(?:THE\s+)?LAST\s+(\d+)\s+YEARS?", clean_text)
+        if years_match:
+            nyears = int(years_match.group(1))
+            today_dt = datetime.now()
+            start = today_dt.replace(year=today_dt.year - nyears).strftime("%Y-%m-%d")
+            end = today_dt.strftime("%Y-%m-%d")
+
+    # Fee extraction
+    fee_pct = None
+    fee_match = re.search(r"WITH\s+([0-9.]+)\s*%\s*FEES?", clean_text)
+    if fee_match:
+        try:
+            fee_pct = float(fee_match.group(1))
+        except ValueError:
+            pass
 
     return {
         "ticker": found_ticker,
         "strategy": strategy,
         "params": params,
-        "fee_pct": None,
+        "fee_pct": fee_pct,
         "slippage_pct": None,
         "start": start,
         "end": end,
@@ -351,9 +389,9 @@ def parse_strategy_text(text: str, context: Optional[Dict[str, Any]] = None) -> 
     raw_spec: Dict[str, Any] = {}
     used_llm = False
 
-    # Check for fault injection (Phase 4 testing)
-    if os.getenv("TRUSTTEST_FAULT") == "parser_llm_fail":
-        logger.warning("[FAULT INJECTION] TRUSTTEST_FAULT=parser_llm_fail active: bypassing LLM and using deterministic heuristic parser.")
+    # Check for fault injection or open circuit breaker
+    if is_fault_active("parser_llm_fail") or is_circuit_open():
+        logger.warning("[FALLBACK PARSER] Bypassing LLM: using deterministic heuristic parser.")
         raw_spec = heuristic_parse(text)
         used_llm = False
     else:
@@ -365,15 +403,17 @@ def parse_strategy_text(text: str, context: Optional[Dict[str, Any]] = None) -> 
             ]
             llm_reply = call_llm(messages, temperature=0.0)
             if llm_reply:
-                cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", llm_reply.strip(), flags=re.DOTALL).strip()
+                cleaned = clean_llm_json_response(llm_reply)
                 raw_spec = json.loads(cleaned)
                 used_llm = True
         except Exception as exc:
-            logger.warning("LLM extraction failed or API key unconfigured (%s); using deterministic heuristic parser.", exc)
+            logger.warning("LLM extraction failed or unavailable (%s); using deterministic heuristic parser.", exc)
             raw_spec = heuristic_parse(text)
 
     # Validate and merge context
     ok, final_spec, missing, question, assumptions = validate_and_apply_defaults(raw_spec, context=context)
+    if not used_llm and ok:
+        assumptions.append("Parsed using basic rule-based parser (language model offline).")
 
     # Retry once with LLM if first attempt failed and LLM was active
     if not ok and used_llm and question:

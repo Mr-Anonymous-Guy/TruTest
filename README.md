@@ -2,7 +2,7 @@
 
 ![tag:innovationlab](https://img.shields.io/badge/innovationlab-3D8BD3)
 ![tag:hackathon](https://img.shields.io/badge/hackathon-5F43F1)
-![tests:35 passed](https://img.shields.io/badge/tests-35%20passed-brightgreen)
+![tests:60 passed](https://img.shields.io/badge/tests-60%20passed-brightgreen)
 ![uagents:0.26.1](https://img.shields.io/badge/uagents-0.26.1-blue)
 ![protocol:ACP--0.3.0](https://img.shields.io/badge/protocol-ACP--0.3.0-orange)
 ![python:3.11+](https://img.shields.io/badge/python-3.11+-blue)
@@ -195,13 +195,59 @@ python trusttest/agents/orchestrator.py
 
 ---
 
-## 🛡️ Reliability & Edge Case Engineering
+## 🛡️ Reliability Engineering (Failure Handling Architecture)
 
-- **No Lookahead Bias:** All signals are strictly shifted by +1 bar. Entries occur on day $t+1$ returns.
-- **Realistic Transaction Costs:** Fees and slippage are deducted on every trade (entries and exits).
-- **Zero-Downtime Data Fallback:** If `yfinance` network times out, the Data Agent seamlessly serves verified local CSVs from `data/cache/`.
-- **Hybrid Parser Resilience:** When `ASI1_API_KEY` is not present or LLM calls time out, a rule-based parser guarantees uninterrupted demo operation.
-- **Windows Console Safe:** Full UTF-8 stdout configuration prevents `cp1252` encoding exceptions on Windows environments.
+TrustTest treats failure as a first-class, designed behavior. The pipeline never crashes, hangs silently, or invents quantitative numbers:
+
+| Failure Scenario | What the User Sees in ASI:One | What is Logged (logs/trace.jsonl & logger) |
+|---|---|---|
+| **Typo in Ticker** (e.g. `RELIANC.NS`) | Suggests closest valid ticker: *"Did you mean RELIANCE.NS?..."* | `user_error` with difflib candidate matches |
+| **Unknown Ticker** (e.g. `FAKETICK`) | Clear explanation with safe cached fallbacks: *"Ticker 'FAKETICK' could not be found. Available cached tickers: RELIANCE.NS, TCS.NS..."* | `user_error` logging unknown symbol |
+| **Future or Short Dates** | Explains backtests require historical data (min 200 bars / 6 months) | `user_error` with invalid date range details |
+| **Rapid Double Send** | Friendly queue notice: *"⏳ I'm still working on your previous request..."* | ConcurrencyGuard prevents race condition on session state |
+| **Excessive Request Rate** (> 6/min) | Throttling notice: *"⚠️ You're sending requests too quickly..."* | RateLimiter records sliding-window throttle event |
+| **Oversize Message** (> 1,000 chars) | Polite truncation notice requesting concise description | InputSanitizer flags `too_long` error |
+| **Live yfinance Outage** | Seamlessly loads historical CSV; final report notes cached source | WARNING: live fetch failed, fallback to local cache CSV |
+| **Language Model Unavailable** | Deterministic heuristic parser automatically extracts parameters | WARNING: LLM unavailable/breaker open, using offline parser |
+| **Backtest Engine Failure** | Transparent stop naming the failure step without made-up numbers | ERROR: Backtest step failed; stack trace logged |
+| **Skeptic Auditor Timeout / Offline** | **Partial Result**: Backtest metrics shown with clear disclaimer: *"The audit step was unavailable, so this result has NOT been validated. No verdict is given."* | WARNING: Skeptic hop timed out after retry; partial result issued |
+| **Duplicate ASI:One Delivery** | Instant acknowledgement; duplicate payload discarded | `MessageDeduplicator` logs repeated `msg_id` |
+| **Uncaught Exception Anywhere** | Friendly apology with unique reference ID: `Ref: err-XXXXXX` | Full stack trace logged with error ID; session remains usable |
+
+---
+
+## 🎬 Demonstrating Reliability in the Video (30s Segments)
+
+Use these concrete fault flags and manual actions to record the reliability showcase:
+
+1. **Status Command Health Ping (No LLM):**
+   - In ASI:One chat, send `status`.
+   - The Orchestrator pings all 5 agents over TCP and returns a live health table with millisecond latencies in < 1 second.
+2. **Live Data Fallback Demo (`TRUSTTEST_FAULT=data_live_fail`):**
+   - Set `TRUSTTEST_FAULT=data_live_fail` in `.env` and restart Data Agent.
+   - Send: `"Backtest 50/200 MA cross on RELIANCE.NS"`.
+   - Note in report shows: *"Simulated live data failure (TRUSTTEST_FAULT=data_live_fail); used local cached data."*
+3. **Graceful Partial Result Demo (`TRUSTTEST_FAULT=skeptic_timeout` or kill Skeptic):**
+   - Terminate `trusttest_skeptic` terminal (or set `TRUSTTEST_FAULT=skeptic_timeout`).
+   - Run a backtest request in ASI:One.
+   - Orchestrator retries once, then delivers the backtest numbers with the prominent notice: *"The audit step was unavailable, so this result has NOT been validated. No verdict is given."* Zero fabricated numbers.
+4. **Offline Parser Fallback Demo (`TRUSTTEST_FAULT=parser_llm_fail`):**
+   - Set `TRUSTTEST_FAULT=parser_llm_fail` or unconfigure API key.
+   - Send: `"Backtest 50/200 MA crossover on RELIANCE.NS for the last 5 years with 0.1% fees"`.
+   - Heuristic parser cleanly extracts parameters with explicit assumption note in report.
+5. **Timeline Trace Visualizer:**
+   - Run `python scripts/show_trace.py latest` in terminal.
+   - Prints a clean, colorized terminal table detailing each hop's attempt count, latency, and status.
+
+---
+
+## ⚠️ Known Limitations
+
+1. **Single-Machine Execution:** Agents run as separate processes on a single host. In production, each uAgent would reside on dedicated containerized cloud infrastructure.
+2. **Persistent Mailbox Processes:** As standard Fetch.ai mailbox agents, running local processes are required to poll and process incoming messages from Agentverse relays.
+3. **Unofficial Data Source:** Historical data uses `yfinance`, which is community-maintained and subject to rate-limiting; cached CSVs are provided for deterministic operation.
+4. **Survivorship & Selection Bias:** Backtesting on current index constituents suffers from survivorship bias.
+5. **Educational Scope:** TrustTest is strictly an educational tool demonstrating adversarial AI auditing; it does not execute live trades or constitute financial advice.
 
 ---
 

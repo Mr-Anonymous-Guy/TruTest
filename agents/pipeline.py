@@ -19,6 +19,7 @@ def format_final_reply(
     prices: Dict[str, Any],
     backtest: Dict[str, Any],
     audit: Dict[str, Any],
+    timing_info: Optional[Tuple[float, float, float, float, float]] = None,
 ) -> str:
     """
     Format the complete TrustTest analysis into a clear, readable plain-text report
@@ -64,10 +65,11 @@ def format_final_reply(
     lines.append(f"  • Trade Count: {trades} trades | Win Rate: {win_rate:.1f}% | Exposure: {exposure:.1f}%")
 
     # Skeptic Adversarial Findings
-    if audit.get("verdict") == "UNVALIDATED":
+    is_unvalidated = audit.get("verdict") == "UNVALIDATED" or audit.get("unvalidated", False)
+    if is_unvalidated:
         lines.append(f"\nAdversarial Skeptic Audit:")
-        lines.append(f"  ⚠️ {audit.get('note', 'Skeptic adversarial auditor was unavailable. Results are unvalidated.')}")
-        lines.append(f"\nFINAL VERDICT: UNVALIDATED (Audit agent offline)")
+        lines.append(f"  ⚠️ The audit step was unavailable, so this result has NOT been validated. No verdict is given.")
+        lines.append(f"\nFINAL VERDICT: UNVALIDATED (No verdict is given)")
     else:
         tests = audit.get("tests", [])
         lines.append(f"\nAdversarial Skeptic Audit:")
@@ -91,6 +93,11 @@ def format_final_reply(
     lines.append("\nNote: Past performance is subject to survivorship and selection bias.")
     lines.append("'Trustworthy' means survived these tests, not that it will make money.")
     lines.append("Educational only, not investment advice.")
+
+    # Timing footer on full results (Tier 3 NICE)
+    if timing_info and not is_unvalidated:
+        tot_s, p_s, d_s, b_s, a_s = timing_info
+        lines.append(f"\nTook {tot_s:.1f}s (parse {p_s:.1f}, data {d_s:.1f}, backtest {b_s:.1f}, audit {a_s:.1f})")
 
     return "\n".join(lines)
 
