@@ -1,0 +1,43 @@
+{
+  "title": "Adversarial Audit Breakdown: RELIANCE.NS",
+  "summary_rows": [
+    {
+      "label": "[FAIL] Oos Split",
+      "value": "OOS Sharpe inverted to -0.42"
+    },
+    {
+      "label": "[FAIL] Cost Sensitivity",
+      "value": "Returns collapse to negative under 2x friction"
+    },
+    {
+      "label": "[FAIL] Parameter Perturbation",
+      "value": "+10% drift drops Sharpe by > 60%"
+    },
+    {
+      "label": "[FAIL] Monte Carlo Baseline",
+      "value": "Beats only 18.2% of 1,000 random entries (need >60%)"
+    },
+    {
+      "label": "Final Verdict",
+      "value": "\ud83d\udee1\ufe0f LIKELY OVERFIT"
+    }
+  ],
+  "ctas": [
+    {
+      "label": "Back to Results",
+      "selection": {
+        "action": "view_results_card",
+        "result_id": "demo-res-123"
+      },
+      "primary": true
+    },
+    {
+      "label": "Full Text Report",
+      "selection": {
+        "action": "full_text_report",
+        "result_id": "demo-res-123"
+      },
+      "primary": false
+    }
+  ]
+}

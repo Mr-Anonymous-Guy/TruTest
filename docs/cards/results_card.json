@@ -1,0 +1,51 @@
+{
+  "title": "TrustTest Results: RELIANCE.NS",
+  "summary_rows": [
+    {
+      "label": "Strategy & Ticker",
+      "value": "Ma Crossover on RELIANCE.NS"
+    },
+    {
+      "label": "Parameters",
+      "value": "fast=50, slow=200"
+    },
+    {
+      "label": "Total Return",
+      "value": "+72.50%"
+    },
+    {
+      "label": "Sharpe Ratio",
+      "value": "1.15"
+    },
+    {
+      "label": "Max Drawdown",
+      "value": "-16.50%"
+    },
+    {
+      "label": "Trades (Win %)",
+      "value": "14 trades (64.3% win)"
+    },
+    {
+      "label": "Skeptic Verdict",
+      "value": "\ud83d\udee1\ufe0f TRUSTWORTHY"
+    }
+  ],
+  "ctas": [
+    {
+      "label": "See Audit Details",
+      "selection": {
+        "action": "view_audit_details",
+        "result_id": "demo-res-123"
+      },
+      "primary": true
+    },
+    {
+      "label": "Full Text Report",
+      "selection": {
+        "action": "full_text_report",
+        "result_id": "demo-res-123"
+      },
+      "primary": false
+    }
+  ]
+}

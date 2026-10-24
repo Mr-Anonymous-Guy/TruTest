@@ -77,11 +77,18 @@
 
 ---
 
-## Phase 5 – Interactive result cards ⏱ 0.5 h
+## Phase 5 – ASI:One Interactive Cards (Protocol v1) ⏱ 0.5 h
 
-- [x] Format backtest result as a markdown card with emoji verdict (✅ / ⚠️ / ❌)
-- [x] Include key metrics table + Skeptic findings in the reply
-- [x] Add disclaimer footer on every result message
+- [x] ASI:One Card Protocol v1 schemas via `MetadataContent` in `agents/cards.py`
+- [x] Card 1: Strategy Picker `CarouselCardPayload` on greeting / "hi" with Demo A, Demo B, and Form CTAs
+- [x] Card 2: Headline Results `DetailCardPayload` with metrics and Skeptic verdict badge
+- [x] Card 3: Adversarial Breakdown `DetailCardPayload` with 4 test findings and "Back to Results" CTA
+- [x] Card 4: Parameter Form `FormCardPayload` with field validation (fast < slow MA) and error title display
+- [x] `CardResultCache` bounded in-memory LRU store with TTL for instant card tab toggling
+- [x] Sample card payloads exported to `docs/cards/*.json` for ASI:One Card Playground verification
+- [x] Graceful text fallback when `TRUSTTEST_CARDS=off` or for partial results
+- [x] Future monetization plan documented in `README.md` (free backtest, paid audit)
+- [x] 68/68 unit & integration tests passing (`pytest tests/ -v`)
 
 ---
 

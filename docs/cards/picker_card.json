@@ -1,0 +1,63 @@
+{
+  "title": "TrustTest Strategy Showcase",
+  "subtitle": "Select a verified benchmark or configure your own strategy below:",
+  "items": [
+    {
+      "id": "demo_a",
+      "title": "Demo A: 50/200 MA Cross",
+      "subtitle": "RELIANCE.NS (2018\u20132024)",
+      "badges": [
+        {
+          "label": "Trustworthy Benchmark",
+          "variant": "success"
+        }
+      ],
+      "secondary_text": "Survives 70/30 OOS split, cost 2x drag, and beats random baseline.",
+      "primary_cta": {
+        "label": "Run Demo A",
+        "selection": {
+          "action": "run_demo_a"
+        },
+        "primary": true
+      }
+    },
+    {
+      "id": "demo_b",
+      "title": "Demo B: 10/30 MA Cross",
+      "subtitle": "RELIANCE.NS (2021\u20132023 Overfit)",
+      "badges": [
+        {
+          "label": "Overfit Takedown",
+          "variant": "warning"
+        }
+      ],
+      "secondary_text": "Impressive in-sample returns that collapse under adversarial audit.",
+      "primary_cta": {
+        "label": "Run Demo B",
+        "selection": {
+          "action": "run_demo_b"
+        },
+        "primary": true
+      }
+    },
+    {
+      "id": "custom_form",
+      "title": "Custom Parameter Form",
+      "subtitle": "Tune MA Windows & Dates",
+      "badges": [
+        {
+          "label": "Interactive Form",
+          "variant": "info"
+        }
+      ],
+      "secondary_text": "Configure stock symbols, moving average fast/slow days, and duration.",
+      "primary_cta": {
+        "label": "Open Parameter Form",
+        "selection": {
+          "action": "open_form"
+        },
+        "primary": true
+      }
+    }
+  ]
+}

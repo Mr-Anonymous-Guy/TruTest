@@ -1,0 +1,74 @@
+{
+  "title": "Configure Strategy Parameters",
+  "fields": [
+    {
+      "name": "ticker",
+      "kind": "select",
+      "label": "Select Asset Ticker",
+      "required": true,
+      "options": [
+        {
+          "value": "RELIANCE.NS",
+          "label": "RELIANCE.NS (Reliance Industries)"
+        },
+        {
+          "value": "TCS.NS",
+          "label": "TCS.NS (Tata Consultancy Services)"
+        },
+        {
+          "value": "INFY.NS",
+          "label": "INFY.NS (Infosys Limited)"
+        },
+        {
+          "value": "HDFCBANK.NS",
+          "label": "HDFCBANK.NS (HDFC Bank)"
+        },
+        {
+          "value": "AAPL",
+          "label": "AAPL (Apple Inc.)"
+        }
+      ]
+    },
+    {
+      "name": "fast",
+      "kind": "number",
+      "label": "Fast Moving Average (days)",
+      "required": true,
+      "placeholder": "50"
+    },
+    {
+      "name": "slow",
+      "kind": "number",
+      "label": "Slow Moving Average (days)",
+      "required": true,
+      "placeholder": "200"
+    },
+    {
+      "name": "duration_years",
+      "kind": "select",
+      "label": "Historical Evaluation Window",
+      "required": true,
+      "options": [
+        {
+          "value": "5",
+          "label": "5 Years (Institutional Standard)"
+        },
+        {
+          "value": "3",
+          "label": "3 Years"
+        },
+        {
+          "value": "2",
+          "label": "2 Years"
+        }
+      ]
+    }
+  ],
+  "submit_cta": {
+    "label": "Submit Backtest & Audit",
+    "selection": {
+      "action": "submit_form"
+    },
+    "primary": true
+  }
+}

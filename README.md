@@ -2,7 +2,7 @@
 
 ![tag:innovationlab](https://img.shields.io/badge/innovationlab-3D8BD3)
 ![tag:hackathon](https://img.shields.io/badge/hackathon-5F43F1)
-![tests:60 passed](https://img.shields.io/badge/tests-60%20passed-brightgreen)
+![tests:68 passed](https://img.shields.io/badge/tests-68%20passed-brightgreen)
 ![uagents:0.26.1](https://img.shields.io/badge/uagents-0.26.1-blue)
 ![protocol:ACP--0.3.0](https://img.shields.io/badge/protocol-ACP--0.3.0-orange)
 ![python:3.11+](https://img.shields.io/badge/python-3.11+-blue)
@@ -238,6 +238,27 @@ Use these concrete fault flags and manual actions to record the reliability show
 5. **Timeline Trace Visualizer:**
    - Run `python scripts/show_trace.py latest` in terminal.
    - Prints a clean, colorized terminal table detailing each hop's attempt count, latency, and status.
+
+---
+
+## 🎴 ASI:One Interactive Cards (Phase 5)
+
+TrustTest natively supports the **ASI:One Cards Protocol v1** over `MetadataContent` for a premium, app-like mobile and desktop UX:
+
+- **Strategy Picker Carousel:** Tap `"hi"` in ASI:One to receive an interactive card carousel with one-tap execution for Demo A, Demo B, or opening the custom parameter builder.
+- **Headline Results Card:** Displays ticker, parameters, total return, Sharpe ratio, drawdown, and Skeptic verdict badge with one-tap `"See Audit Details"` navigation.
+- **Adversarial Breakdown Card:** Deep-dive card listing Out-of-sample, Cost drag, Perturbation, and Monte Carlo benchmarks.
+- **Interactive Form Card:** Custom strategy configurator with field validation (fast MA < slow MA).
+- **Fast Tab Toggling:** In-memory `CardResultCache` allows instant back-and-forth toggling between Results and Audit cards without redundant simulation.
+- **Card Playground Schemas:** Exported schema files in `docs/cards/*.json` (`picker_card.json`, `results_card.json`, `audit_card.json`, `form_card.json`) for testing at [asi1.ai/developer/card-playground](https://asi1.ai/developer/card-playground).
+- **Zero-Downtime Fallback:** Toggle `TRUSTTEST_CARDS=off` to revert cleanly to a 100% plain-text experience.
+
+---
+
+## 💰 Future Monetization Plan
+
+- **Free Tier:** Instant lookahead-free quantitative backtest and standard metrics (Total Return, Sharpe, Drawdown, Trades).
+- **Paid Tier (Micropayments via Fetch.ai Payment Protocol):** Adversarial Skeptic quant audit (Monte Carlo 1,000 runs, 2x cost friction drag, parameter perturbation stability, and definitive verdict).
 
 ---
 

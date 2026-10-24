@@ -1,7 +1,7 @@
 """
 agents/orchestrator.py – TrustTest Orchestrator Agent (Port 8001)
 ================================================================
-ASI:One-facing gateway implementing Agent Chat Protocol (ACP) 0.3.0.
+ASI:One-facing gateway implementing Agent Chat Protocol (ACP) 0.3.0 & Cards Protocol v1.
 Coordinates the multi-agent pipeline:
 User -> Orchestrator -> Parser -> Data -> Backtest -> Skeptic -> Final Report.
 
@@ -17,6 +17,14 @@ Phase 4 Reliability:
   - Step-by-step trace logging (logs/trace.jsonl, logs/latest_trace.json)
   - Partial results when Skeptic is unavailable (no verdict, unvalidated notice)
   - Timing footer on full results
+
+Phase 5 Interactive Cards:
+  - Strategy Picker CarouselCardPayload on greeting / hi
+  - Headline Results DetailCardPayload with Skeptic verdict badge
+  - Audit Breakdown DetailCardPayload with 4 adversarial tests
+  - Parameter FormCardPayload with validation for custom strategy submissions
+  - In-memory CardResultCache for fast card tab toggling
+  - Pure text fallback when TRUSTTEST_CARDS=off
 """
 
 from __future__ import annotations
@@ -41,12 +49,22 @@ from uagents_core.contrib.protocols.chat import (
     ChatAcknowledgement,
     ChatMessage,
     EndSessionContent,
+    MetadataContent,
     StartSessionContent,
     TextContent,
     chat_protocol_spec,
 )
 
 from agents import messages
+from agents.cards import (
+    are_cards_enabled,
+    card_cache,
+    create_audit_details_card,
+    create_parameter_form_card,
+    create_results_card,
+    create_strategy_picker_card,
+    extract_selection_from_message,
+)
 from agents.faults import check_and_log_faults_startup
 from agents.models import (
     AuditRequest,
@@ -104,7 +122,7 @@ DATA_AGENT_ADDRESS = _get_addr("DATA_AGENT_ADDRESS", os.getenv("DATA_SEED", "tru
 BACKTEST_AGENT_ADDRESS = _get_addr("BACKTEST_AGENT_ADDRESS", os.getenv("BACKTEST_SEED", "trusttest_backtest_agent_seed_fetchathon3_2026"))
 SKEPTIC_AGENT_ADDRESS = _get_addr("SKEPTIC_AGENT_ADDRESS", os.getenv("SKEPTIC_SEED", "trusttest_skeptic_agent_seed_fetchathon3_2026"))
 
-# Phase 4 Reliability State Primitives
+# Reliability & Card State Primitives
 session_store = BoundedSessionStore(max_sessions=1000, ttl_seconds=1800.0)
 concurrency_guard = ConcurrencyGuard()
 rate_limiter = RateLimiter(max_requests=6, window_seconds=60.0)
@@ -268,8 +286,111 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage) -> None:
             ctx.logger.info("Cleaned up session state for %s", sender)
             return
 
-        if has_start_session and not raw_user_text.strip():
-            await ctx.send(sender, create_text_chat(messages.WELCOME_GREETING))
+        # -------------------------------------------------------------------
+        # Phase 5: Handle Card Tap Selections
+        # -------------------------------------------------------------------
+        card_action = extract_selection_from_message(msg)
+        if card_action:
+            action = card_action.get("action")
+            ctx.logger.info("Card action received from %s: '%s'", sender, action)
+
+            if action == "view_audit_details":
+                res_id = card_action.get("result_id")
+                cached = card_cache.get(res_id)
+                if not cached:
+                    await ctx.send(sender, create_text_chat("⚠️ That result has expired. Please run the strategy again or choose an example from 'hi'."))
+                    return
+                audit_card = create_audit_details_card(res_id, cached["spec"], cached["audit"])
+                await ctx.send(sender, ChatMessage(content=[TextContent(type="text", text=f"Adversarial Audit Breakdown for {cached['spec']['ticker']}:"), audit_card]))
+                return
+
+            elif action == "view_results_card":
+                res_id = card_action.get("result_id")
+                cached = card_cache.get(res_id)
+                if not cached:
+                    await ctx.send(sender, create_text_chat("⚠️ That result has expired. Please run the strategy again or choose an example from 'hi'."))
+                    return
+                res_card = create_results_card(res_id, cached["spec"], cached["backtest"], cached["audit"])
+                await ctx.send(sender, ChatMessage(content=[TextContent(type="text", text=f"Backtest Results for {cached['spec']['ticker']}:"), res_card]))
+                return
+
+            elif action == "full_text_report":
+                res_id = card_action.get("result_id")
+                cached = card_cache.get(res_id)
+                if not cached:
+                    await ctx.send(sender, create_text_chat("⚠️ That result has expired. Please run the strategy again or choose an example from 'hi'."))
+                    return
+                await ctx.send(sender, create_text_chat(cached["full_text"]))
+                return
+
+            elif action == "open_form":
+                form_card = create_parameter_form_card()
+                await ctx.send(sender, ChatMessage(content=[TextContent(type="text", text="Configure your custom strategy parameters below:"), form_card]))
+                return
+
+            elif action == "submit_form":
+                ticker = str(card_action.get("ticker", "RELIANCE.NS")).strip().upper()
+                try:
+                    fast = int(card_action.get("fast", 50))
+                    slow = int(card_action.get("slow", 200))
+                    duration = int(card_action.get("duration_years", 5))
+                except (ValueError, TypeError):
+                    err = "Invalid moving average window or duration: integers required."
+                    form_card = create_parameter_form_card(error_msg=err)
+                    await ctx.send(sender, ChatMessage(content=[TextContent(type="text", text=f"⚠️ {err}"), form_card]))
+                    return
+
+                if fast <= 0 or slow <= 0 or fast >= slow:
+                    err = f"Fast window ({fast}) must be strictly less than slow window ({slow})."
+                    form_card = create_parameter_form_card(error_msg=err)
+                    await ctx.send(sender, ChatMessage(content=[TextContent(type="text", text=f"⚠️ {err}"), form_card]))
+                    return
+
+                raw_user_text = f"Backtest {fast}/{slow} moving average crossover on {ticker} for the last {duration} years"
+
+            elif action == "run_demo_a":
+                raw_user_text = "Backtest 50/200 MA crossover on RELIANCE.NS from 2018-01-01 to 2024-01-01"
+
+            elif action == "run_demo_b":
+                raw_user_text = "Backtest 10/30 MA crossover on RELIANCE.NS from 2021-01-01 to 2023-01-01"
+
+        # -------------------------------------------------------------------
+        # Plain Text Commands (Status, Full Report, Custom Form, Greeting)
+        # -------------------------------------------------------------------
+        cleaned_text = raw_user_text.strip().lower()
+
+        # Status command (Task 4: Fast Health Ping, No LLM)
+        if cleaned_text in ("status", "/status", "health"):
+            health_report = check_agent_health()
+            await ctx.send(sender, create_text_chat(health_report))
+            return
+
+        # Full text report request by plain text
+        if cleaned_text in ("full report", "/report", "full text report"):
+            last_id = sess.get("last_result_id")
+            if last_id:
+                cached = card_cache.get(last_id)
+                if cached:
+                    await ctx.send(sender, create_text_chat(cached["full_text"]))
+                    return
+            await ctx.send(sender, create_text_chat("No recent backtest report found in this session. Send a strategy to get started."))
+            return
+
+        # Form opener command
+        if cleaned_text in ("backtest a moving average strategy", "configure strategy", "open form", "create strategy"):
+            if are_cards_enabled():
+                form_card = create_parameter_form_card()
+                await ctx.send(sender, ChatMessage(content=[TextContent(type="text", text="Configure your custom strategy parameters below:"), form_card]))
+                return
+
+        # Greeting / Start Session
+        is_greeting = cleaned_text in ("hi", "hello", "hey", "start", "/start", "help") or (has_start_session and not raw_user_text.strip())
+        if is_greeting:
+            if are_cards_enabled():
+                picker_card = create_strategy_picker_card()
+                await ctx.send(sender, ChatMessage(content=[TextContent(type="text", text=messages.WELCOME_GREETING), picker_card]))
+            else:
+                await ctx.send(sender, create_text_chat(messages.WELCOME_GREETING))
             return
 
         # 3. Input Sanitization & Bounds Checking (Task 2)
@@ -281,19 +402,13 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage) -> None:
                 await ctx.send(sender, create_text_chat(messages.MSG_EMPTY))
             return
 
-        # 4. Status command (Task 4: Fast Health Ping, No LLM)
-        if user_text.strip().lower() in ("status", "/status", "health"):
-            health_report = check_agent_health()
-            await ctx.send(sender, create_text_chat(health_report))
-            return
-
-        # 5. Sliding-Window Rate Limiter (Task 2: 6 req/min per sender)
+        # 4. Sliding-Window Rate Limiter (Task 2: 6 req/min per sender)
         if not rate_limiter.allow(sender):
             ctx.logger.warning("Sender %s exceeded rate limit", sender)
             await ctx.send(sender, create_text_chat(messages.RATE_LIMITED))
             return
 
-        # 6. Concurrency Guard (Task 2: Single pipeline per sender)
+        # 5. Concurrency Guard (Task 2: Single pipeline per sender)
         if not concurrency_guard.acquire(sender):
             ctx.logger.info("Sender %s submitted request while another is active", sender)
             await ctx.send(sender, create_text_chat(messages.STILL_WORKING))
@@ -323,7 +438,6 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage) -> None:
             try:
                 parse_res = await _call_parser()
             except TransientError:
-                # One retry
                 ctx.logger.warning("Parser timed out on attempt 1 [%s]; retrying...", req_id)
                 record_hop_event(req_id, sender, "Strategy Parser", "timeout", (time.perf_counter() - t1_start) * 1000, attempt=1)
                 try:
@@ -533,11 +647,30 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage) -> None:
             )
             session_store.update_partial_spec(sender, None)
 
+            # Store in Card Result Cache
+            card_cache.store(
+                result_id=req_id,
+                spec=spec,
+                backtest=bt_res.result,
+                audit=audit_report,
+                full_text=final_report_text,
+            )
+            sess["last_result_id"] = req_id
+
             t5_ms = (time.perf_counter() - t_start) * 1000
             trace_steps.append({"hop": 5, "agent": "Orchestrator Delivery", "status": "SUCCESS", "latency_ms": t5_ms, "details": "Delivered audit report to ASI:One"})
             save_full_pipeline_trace(req_id, sender, user_text, trace_steps, t5_ms)
 
-            await ctx.send(sender, create_text_chat(final_report_text))
+            # Deliver response (with Interactive Results Card if enabled and validated)
+            if are_cards_enabled() and not audit_report.get("unvalidated"):
+                results_card = create_results_card(req_id, spec, bt_res.result, audit_report)
+                await ctx.send(
+                    sender,
+                    ChatMessage(content=[TextContent(type="text", text=final_report_text), results_card]),
+                )
+            else:
+                await ctx.send(sender, create_text_chat(final_report_text))
+
             ctx.logger.info("Pipeline [%s] successfully delivered final audit report to %s in %.0fms", req_id, sender, t5_ms)
 
         finally:
