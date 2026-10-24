@@ -1,0 +1,30 @@
+# TrustTest – Python dependencies
+# Python >= 3.10 required
+#
+# Install:
+#   python -m venv .venv
+#   .venv\Scripts\activate  (Windows) | source .venv/bin/activate (Unix)
+#   pip install -r requirements.txt
+
+# ---------- uAgents framework ----------
+uagents==0.26.1
+uagents-core>=0.4.11
+
+# ---------- ASI:One / LLM client -------
+openai>=1.30.0,<2.0.0
+
+# ---------- Configuration ---------------
+python-dotenv>=1.0.0
+
+# ---------- Data & maths ----------------
+pandas>=2.0.0
+numpy>=1.26.0
+yfinance>=0.2.31
+
+# ---------- HTTP (used by uagents) ------
+requests>=2.31.0
+aiohttp>=3.8.3
+
+# ---------- Dev / test ------------------
+pytest>=8.0.0
+pytest-asyncio>=0.23.0

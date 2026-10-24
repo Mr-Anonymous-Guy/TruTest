@@ -1,0 +1,37 @@
+# Secrets & local state — never commit these
+.env
+*.env
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data (CSVs tracked via git-lfs or excluded; add individual files below if needed)
+# trusttest/data/cache/*.csv   # uncomment to exclude cache CSVs from git
