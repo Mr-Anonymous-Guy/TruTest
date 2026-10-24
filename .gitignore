@@ -33,5 +33,9 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Logs
+logs/
+*.log
+
 # Data (CSVs tracked via git-lfs or excluded; add individual files below if needed)
 # trusttest/data/cache/*.csv   # uncomment to exclude cache CSVs from git
