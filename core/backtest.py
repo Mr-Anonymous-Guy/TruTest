@@ -172,6 +172,7 @@ def rsi_meanrev(
 STRATEGIES: Dict[str, Callable[..., pd.Series]] = {
     "ma_crossover": ma_crossover,
     "rsi_meanrev": rsi_meanrev,
+    "rsi": rsi_meanrev,
 }
 
 

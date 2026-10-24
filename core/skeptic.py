@@ -250,7 +250,7 @@ def attack_parameter_perturbation(
             slow = p.get("slow", 200)
             if fast <= 0 or slow <= 0 or fast >= slow:
                 continue
-        elif spec.strategy == "rsi_meanrev":
+        elif spec.strategy in ("rsi_meanrev", "rsi"):
             period = p.get("period", 14)
             oversold = p.get("oversold", 30.0)
             overbought = p.get("overbought", 70.0)

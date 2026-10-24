@@ -124,3 +124,15 @@ def test_pure_noise_rejection():
 
     print(f"\nPure noise check: {trustworthy_count}/20 came back Trustworthy")
     assert trustworthy_count <= 2, f"Expected <= 2 Trustworthy on pure noise, got {trustworthy_count}"
+
+
+def test_rsi_audit_alias_support():
+    """Skeptic audit works with both 'rsi' and 'rsi_meanrev' specs."""
+    df = _make_synth_df(300)
+    spec_alias = StrategySpec(ticker="TCS.NS", strategy="rsi", params={"period": 14, "oversold": 30.0, "overbought": 70.0})
+    rep_alias = audit(df, spec_alias)
+    assert rep_alias.verdict in ("Trustworthy", "Fragile", "Likely Overfit")
+
+    spec_canon = StrategySpec(ticker="TCS.NS", strategy="rsi_meanrev", params={"period": 14, "oversold": 30.0, "overbought": 70.0})
+    rep_canon = audit(df, spec_canon)
+    assert rep_canon.verdict in ("Trustworthy", "Fragile", "Likely Overfit")

@@ -160,7 +160,7 @@ STORED_EXAMPLES: Dict[str, Dict[str, Any]] = {
     },
     "rsi_tcs": {
         "ticker": "TCS.NS",
-        "strategy": "rsi",
+        "strategy": "rsi_meanrev",
         "params": {"period": 14, "oversold": 30, "overbought": 70},
         "fee_pct": 0.1,
         "slippage_pct": 0.05,

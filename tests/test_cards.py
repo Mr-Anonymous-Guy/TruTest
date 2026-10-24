@@ -297,7 +297,7 @@ def test_stored_examples_resolution():
 
     demo_c = STORED_EXAMPLES["rsi_tcs"]
     assert demo_c["ticker"] == "TCS.NS"
-    assert demo_c["strategy"] == "rsi"
+    assert demo_c["strategy"] in ("rsi", "rsi_meanrev")
 
 
 def test_session_recent_reports_bounding():

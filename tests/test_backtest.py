@@ -112,3 +112,19 @@ def test_rsi_wilder_smoothing():
 
     pos = rsi_meanrev(df, period=14, oversold=30.0, overbought=70.0)
     assert set(pos.unique()).issubset({0, 1})
+
+
+def test_rsi_alias_support():
+    """Both 'rsi' and 'rsi_meanrev' strategies are supported."""
+    rng = np.random.default_rng(42)
+    prices = 100.0 * np.cumprod(1.0 + rng.normal(0.0, 0.02, 100))
+    df = _make_df(list(prices))
+
+    spec_alias = StrategySpec(ticker="TCS.NS", strategy="rsi", params={"period": 14, "oversold": 30.0, "overbought": 70.0})
+    res_alias = run_backtest(df, spec_alias)
+    assert len(res_alias.positions) == 100
+
+    spec_canon = StrategySpec(ticker="TCS.NS", strategy="rsi_meanrev", params={"period": 14, "oversold": 30.0, "overbought": 70.0})
+    res_canon = run_backtest(df, spec_canon)
+    assert len(res_canon.positions) == 100
+    assert res_alias.sharpe == res_canon.sharpe
