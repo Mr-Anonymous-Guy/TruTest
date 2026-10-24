@@ -1,9 +1,7 @@
 """
-TrustTest – Orchestrator Agent
-==============================
-The ASI:One-facing entry-point agent.
-Implements Agent Chat Protocol (ACP) 0.3.0 and orchestrates the
-TrustTest pipeline: Parser -> Data -> Backtest -> Skeptic Auditor.
+TrustTest – Orchestrator Agent (Phase 1)
+========================================
+ASI:One-facing entry-point agent implementing Agent Chat Protocol (ACP) 0.3.0.
 """
 
 from __future__ import annotations
@@ -11,7 +9,7 @@ from __future__ import annotations
 import datetime
 import logging
 import os
-import uuid
+from typing import Any, Dict
 
 from dotenv import load_dotenv
 from uagents import Agent, Context, Protocol
@@ -24,109 +22,143 @@ from uagents_core.contrib.protocols.chat import (
     chat_protocol_spec,
 )
 
-from trusttest.core.pipeline import run_pipeline
-
+# ---------------------------------------------------------------------------
+# Configuration & Environment
+# ---------------------------------------------------------------------------
 load_dotenv()
-logger = logging.getLogger(__name__)
+
+ORCHESTRATOR_SEED = os.getenv("ORCHESTRATOR_SEED")
+if not ORCHESTRATOR_SEED or ORCHESTRATOR_SEED.strip() in ("", "REPLACE_WITH_RANDOM_SEED", "REPLACE_ME"):
+    raise RuntimeError(
+        "ORCHESTRATOR_SEED is missing or unconfigured in .env. "
+        "Please provide a valid seed string in your .env file."
+    )
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
+logger = logging.getLogger("trusttest_orchestrator")
 
 # ---------------------------------------------------------------------------
-# Agent initialization
+# Session State (stub for Phase 3 pipeline extension)
+# ---------------------------------------------------------------------------
+# TODO (Phase 3): store active StrategySpec, intermediate backtest results, and audit progress per session.
+sessions: Dict[str, Dict[str, Any]] = {}
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def create_text_chat(text: str) -> ChatMessage:
+    """Helper to construct a ChatMessage containing TextContent."""
+    return ChatMessage(
+        content=[TextContent(type="text", text=text)]
+    )
+
+
+# ---------------------------------------------------------------------------
+# Agent Construction
 # ---------------------------------------------------------------------------
 agent = Agent(
     name="trusttest_orchestrator",
-    seed=os.getenv("ORCHESTRATOR_SEED", "trusttest_orchestrator_seed_hackathon_fetchathon3"),
+    seed=ORCHESTRATOR_SEED,
+    port=8001,
+    mailbox=True,
+    publish_agent_details=True,
 )
 
 # ---------------------------------------------------------------------------
-# Agent Chat Protocol handler
+# Protocol & Handlers (AgentChatProtocol 0.3.0)
 # ---------------------------------------------------------------------------
 chat_proto = Protocol(spec=chat_protocol_spec)
 
 
-@chat_proto.on_message(model=ChatMessage)
-async def handle_chat(ctx: Context, sender: str, msg: ChatMessage) -> None:
-    """Receive a chat message from ASI:One and run the adversarial audit pipeline."""
-    ctx.logger.info("Received ChatMessage from %s", sender)
+@chat_proto.on_message(ChatAcknowledgement)
+async def handle_ack(ctx: Context, sender: str, msg: ChatAcknowledgement) -> None:
+    """Handle and log chat acknowledgements."""
+    ctx.logger.info("ChatAcknowledgement received from %s for msg_id: %s", sender, msg.acknowledged_msg_id)
 
-    # 1. Acknowledge receipt immediately
+
+@chat_proto.on_message(ChatMessage)
+async def handle_message(ctx: Context, sender: str, msg: ChatMessage) -> None:
+    """Receive and process incoming chat messages from ASI:One or clients."""
+    # ALWAYS acknowledge receipt first
+    await ctx.send(sender, ChatAcknowledgement(acknowledged_msg_id=msg.msg_id))
+
+    content_types = [type(item).__name__ for item in msg.content]
+    ctx.logger.info("Message received from %s with content types: %s", sender, content_types)
+
     try:
-        ack = ChatAcknowledgement(
-            acknowledged_msg_id=msg.msg_id or uuid.uuid4(),
-            timestamp=datetime.datetime.now(),
-        )
-        await ctx.send(sender, ack)
+        # Initialize or retrieve session state
+        if sender not in sessions:
+            sessions[sender] = {"created_at": datetime.datetime.now(), "history": []}
+
+        user_text = ""
+        has_start_session = False
+        has_end_session = False
+        has_unknown = False
+
+        for item in msg.content:
+            if isinstance(item, StartSessionContent):
+                has_start_session = True
+                ctx.logger.info("StartSessionContent detected from %s", sender)
+            elif isinstance(item, TextContent):
+                user_text += item.text
+                ctx.logger.info("TextContent received from %s: %s", sender, item.text)
+            elif isinstance(item, EndSessionContent):
+                has_end_session = True
+                ctx.logger.info("EndSessionContent detected from %s", sender)
+            else:
+                has_unknown = True
+                ctx.logger.warning("Unknown content type from %s: %s", sender, type(item).__name__)
+
+        # Handle session termination
+        if has_end_session:
+            sessions.pop(sender, None)
+            ctx.logger.info("Cleaned up session state for %s", sender)
+            return
+
+        # Handle new session greeting if no text prompt was attached
+        if has_start_session and not user_text:
+            welcome_msg = (
+                "TrustTest is online. Soon I'll backtest your trading strategy and then try to break the result with an adversarial audit. "
+                "(Educational only, not investment advice.)"
+            )
+            reply = create_text_chat(welcome_msg)
+            await ctx.send(sender, reply)
+            ctx.logger.info("Sent welcome reply to %s: %s", sender, welcome_msg)
+            return
+
+        # Handle text message: reply with placeholder echoing the user's strategy
+        if user_text:
+            sessions[sender]["history"].append(user_text)
+            reply_text = (
+                f"TrustTest is online. Soon I'll backtest your trading strategy and then try to break the result with an adversarial audit. "
+                f"(Educational only, not investment advice.)\n\n"
+                f"Received strategy description:\n\"{user_text}\""
+            )
+            reply = create_text_chat(reply_text)
+            await ctx.send(sender, reply)
+            ctx.logger.info("Sent reply to %s: %s", sender, reply_text)
+        elif has_unknown:
+            fallback_text = (
+                "Received unrecognized message content. Please describe your trading strategy in plain English."
+            )
+            reply = create_text_chat(fallback_text)
+            await ctx.send(sender, reply)
+            ctx.logger.info("Sent unknown content fallback to %s", sender)
+
     except Exception as exc:
-        ctx.logger.warning("Could not send ChatAcknowledgement: %s", exc)
-
-    # 2. Extract plain-text prompt from msg.content
-    user_text = ""
-    for item in msg.content:
-        if isinstance(item, TextContent):
-            user_text += item.text
-        elif hasattr(item, "text"):
-            user_text += getattr(item, "text", "")
-
-    user_text = user_text.strip()
-    ctx.logger.info("User prompt: %s", user_text)
-
-    # 3. Handle greetings or empty text
-    if not user_text or user_text.lower() in ("hi", "hello", "hey", "help"):
-        greeting = (
-            "👋 **Welcome to TrustTest!**\n\n"
-            "I am your adversarial trading strategy auditor for Fetch-A-Thon 3.0.\n\n"
-            "Describe any trading strategy in plain English and I will:\n"
-            "1. 📈 Run a fee-adjusted, lookahead-free backtest.\n"
-            "2. 🧐 Subject it to the **Skeptic** adversarial stress tests (out-of-sample, cost sensitivity, parameter perturbation, and 1,000 Monte Carlo baselines).\n"
-            "3. 🛡️ Return an audit verdict: **Trustworthy**, **Fragile**, or **Likely Overfit**.\n\n"
-            "**Example prompts to try:**\n"
-            "- *\"Buy Reliance when the 50 SMA crosses above the 200 SMA from 2018 to 2024\"*\n"
-            "- *\"RSI below 30 buy, exit above 70 on TCS.NS\"*\n"
-            "- *\"20-day momentum on AAPL\"*"
+        ctx.logger.exception("Exception occurred while handling message from %s: %s", sender, exc)
+        err_msg = (
+            "Sorry, an unexpected error occurred while processing your request. "
+            "Please try again."
         )
-        reply = ChatMessage(
-            content=[TextContent(text=greeting)],
-            msg_id=uuid.uuid4(),
-            timestamp=datetime.datetime.now(),
-        )
-        await ctx.send(sender, reply)
-        return
-
-    # 4. Run full pipeline
-    result_card = run_pipeline(user_text)
-
-    # 5. Send result card back to user
-    reply = ChatMessage(
-        content=[TextContent(text=result_card)],
-        msg_id=uuid.uuid4(),
-        timestamp=datetime.datetime.now(),
-    )
-    await ctx.send(sender, reply)
-    ctx.logger.info("Sent audit result card to %s", sender)
-
-
-@chat_proto.on_message(model=StartSessionContent)
-async def handle_start(ctx: Context, sender: str, msg: StartSessionContent) -> None:
-    """Greet user when a new ASI:One session opens."""
-    ctx.logger.info("New session started from %s", sender)
-    welcome_msg = (
-        "🛡️ **TrustTest Session Started**\n\n"
-        "Send your trading strategy description to begin the backtest and adversarial audit."
-    )
-    reply = ChatMessage(
-        content=[TextContent(text=welcome_msg)],
-        msg_id=uuid.uuid4(),
-        timestamp=datetime.datetime.now(),
-    )
-    await ctx.send(sender, reply)
-
-
-@chat_proto.on_message(model=EndSessionContent)
-async def handle_end(ctx: Context, sender: str, msg: EndSessionContent) -> None:
-    """Clean up session state when the user closes the chat."""
-    ctx.logger.info("Session ended from %s", sender)
+        await ctx.send(sender, create_text_chat(err_msg))
 
 
 agent.include(chat_proto, publish_manifest=True)
 
+# ---------------------------------------------------------------------------
+# Main Execution Guard
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
     agent.run()

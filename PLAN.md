@@ -25,9 +25,12 @@
 
 - [x] Implement `agents/orchestrator.py` with `chat_proto` (ACP 0.3.0)
 - [x] Handle `StartSessionContent`, `ChatMessage`, `EndSessionContent`
-- [x] Derive deterministic agent addresses from seeds and populate `.env`
-- [x] Add agent addresses to README agents table
-- [x] Smoke-test: send "hello" from ASI:One chat, get a reply
+- [x] Load `ORCHESTRATOR_SEED` from `.env`, helper `create_text_chat`, structured logging
+- [x] Write `agents/README_orchestrator.md` for Agentverse profile
+- [x] Compile and verify locally (`python -m py_compile agents/orchestrator.py`)
+- [x] Launch agent and obtain Agent address & Inspector URL
+- [ ] Connect mailbox in Inspector URL (manual user action)
+- [ ] Set Agentverse Profile and test in ASI:One chat (manual user action)
 
 ---
 
