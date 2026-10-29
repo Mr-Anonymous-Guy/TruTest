@@ -27,6 +27,7 @@ from uagents import Agent, Context, Protocol
 
 from agents.faults import check_and_log_faults_startup, is_fault_active
 from agents.llm import call_llm, clean_llm_json_response, is_circuit_open
+from agents.messages import TICKER_MARKET_SNAPSHOTS
 from agents.models import HealthRequest, HealthResponse, ParseRequest, ParseResponse
 
 load_dotenv()
@@ -151,12 +152,17 @@ def heuristic_parse(text: str) -> Dict[str, Any]:
         elif len(nums) == 1:
             period = nums[0]
         params = {"period": period, "oversold": oversold, "overbought": overbought}
-    elif any(k in clean_text for k in ["MA", "MOVING AVERAGE", "SMA", "CROSSOVER", "CROSS"]):
+    elif any(k in clean_text for k in ["MA", "MOVING AVERAGE", "SMA", "CROSSOVER", "CROSS", "FAST", "SLOW"]):
         strategy = "ma_crossover"
-        nums = [int(n) for n in re.findall(r"\b\d+\b", clean_text)]
-        if len(nums) >= 2:
-            nums.sort()
-            params = {"fast": nums[0], "slow": nums[1]}
+        fast_match = re.search(r"FAST\s*(?:MA|WINDOW)?\s*(?:IS|=|:)?\s*(\d+)", clean_text)
+        slow_match = re.search(r"SLOW\s*(?:MA|WINDOW)?\s*(?:IS|=|:)?\s*(\d+)", clean_text)
+        if fast_match and slow_match:
+            params = {"fast": int(fast_match.group(1)), "slow": int(slow_match.group(1))}
+        else:
+            nums = [int(n) for n in re.findall(r"\b\d+\b", clean_text)]
+            if len(nums) >= 2:
+                nums.sort()
+                params = {"fast": nums[0], "slow": nums[1]}
 
     # Window dates
     start, end = None, None
@@ -302,6 +308,30 @@ def validate_and_apply_defaults(raw_spec: Dict[str, Any], context: Optional[Dict
         assumptions.append("Default evaluation period: last 5 years.")
 
     if missing:
+        # If ticker is identified but strategy is missing (e.g. user just selected/said "HDFC Bank")
+        if ticker and "strategy" in missing:
+            snapshot = TICKER_MARKET_SNAPSHOTS.get(
+                ticker,
+                f"**{ticker}** — Solid liquid instrument for quantitative testing. 📊"
+            )
+            name = ticker.replace(".NS", "").replace("^", "")
+            question = (
+                f"{snapshot}\n\n"
+                f"Now, **what kind of strategy logic would you like to run on {name}?**\n"
+                f"• **Moving Average Crossover** (e.g. buying when a fast MA crosses above a slow MA, like 50/200 or 20/50)\n"
+                f"• **RSI Mean-Reversion** (e.g. buying oversold dips below 30 and exiting on strength above 70)\n\n"
+                f"Tell me the strategy and the parameters you'd like to test!"
+            )
+            return False, spec, missing, question, assumptions
+
+        elif ticker and ("fast_window" in missing or "slow_window" in missing):
+            name = ticker.replace(".NS", "").replace("^", "")
+            question = (
+                f"For the moving average crossover on **{name}**, what **fast and slow window periods** would you like to test? "
+                f"(e.g., 50 and 200, 20 and 50, or your own custom days)"
+            )
+            return False, spec, missing, question, assumptions
+
         # Construct friendly clarification question
         q_parts = []
         if "ticker" in missing:

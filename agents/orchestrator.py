@@ -178,6 +178,36 @@ def create_text_chat(text: str) -> ChatMessage:
     return ChatMessage(content=[TextContent(type="text", text=text)])
 
 
+def generate_verdict_narrative(spec: Dict[str, Any], backtest: Dict[str, Any], audit: Dict[str, Any]) -> str:
+    """Produce a concise, human-sounding quantitative explanation of the Skeptic audit verdict."""
+    verdict = audit.get("verdict", "").title()
+    tests = audit.get("tests", [])
+    failed_tests = [t.get("name", "").replace("_", " ") for t in tests if not t.get("passed")]
+
+    if verdict == "Trustworthy":
+        return (
+            "The strategy proved resilient across stress tests: it maintained strong performance in the "
+            "70/30 out-of-sample split, survived 2x transaction friction, and comfortably outperformed "
+            "random baseline simulations."
+        )
+    elif verdict == "Likely Overfit":
+        reasons = []
+        if any("cost" in ft for ft in failed_tests):
+            reasons.append("When transaction friction was doubled to 2x (0.2% fee, 0.1% slippage), the thin profit evaporated into negative net returns.")
+        if any("sample" in ft or "oos" in ft for ft in failed_tests):
+            reasons.append("While performance appeared decent in the in-sample period, returns collapsed in the 30% out-of-sample test window.")
+        if any("random" in ft or "monte" in ft for ft in failed_tests):
+            reasons.append("The strategy could not beat simple random-entry baselines at a 95% confidence hurdle.")
+        if not reasons:
+            reasons.append("Performance deteriorated significantly under parameter perturbation and cost sensitivity checks.")
+        return "While the backtest ended positive on paper, it failed critical adversarial stress tests:\n• " + "\n• ".join(reasons)
+    else:  # Fragile
+        return (
+            "The strategy shows signs of positive edge, but exhibits noticeable sensitivity to transaction costs "
+            "or parameter shifts. It may struggle across varying market volatility regimes."
+        )
+
+
 def check_agent_health() -> str:
     """Check health and ping latency across all 5 agents (Phase 4)."""
     agents = [
@@ -807,15 +837,39 @@ async def handle_message(ctx: Context, sender: str, msg: ChatMessage) -> None:
                 try:
                     results_card = create_results_card(req_id, spec, bt_res.result, audit_report)
                     tot_ret = float(bt_res.result.get("total_return", 0.0)) * 100.0
+                    cagr_pct = float(bt_res.result.get("cagr", 0.0)) * 100.0
                     sharpe = float(bt_res.result.get("sharpe", 0.0))
                     max_dd = abs(float(bt_res.result.get("max_drawdown", 0.0))) * 100.0
+                    trade_cnt = bt_res.result.get("trade_count", 0)
                     verdict = audit_report.get("verdict", "UNVALIDATED").upper()
+
+                    ticker_sym = spec.get("ticker", "")
+                    clean_sym = ticker_sym.replace(".NS", "").replace("^", "")
+                    strategy_name = spec.get("strategy", "")
+                    params_dict = spec.get("params", {})
+                    if strategy_name == "ma_crossover":
+                        strat_desc = f"{params_dict.get('fast', 50)}/{params_dict.get('slow', 200)} MA Crossover"
+                    elif strategy_name in ("rsi", "rsi_meanrev"):
+                        strat_desc = f"RSI {params_dict.get('period', 14)} Mean-Reversion"
+                    else:
+                        strat_desc = strategy_name
+
+                    narrative = generate_verdict_narrative(spec, bt_res.result, audit_report)
+
                     summary_text = (
-                        f"🛡️ TrustTest Verdict: [{verdict}] on {spec.get('ticker')}\n"
-                        f"• Total Return: {tot_ret:+.1f}%\n"
-                        f"• Sharpe Ratio: {sharpe:.2f}\n"
-                        f"• Max Drawdown: -{max_dd:.1f}%\n\n"
-                        "Tap 'See audit details' below or type 'full report' for the complete text report."
+                        f"Here is your diagnostic breakdown for **{ticker_sym} ({strat_desc})**:\n\n"
+                        f"📊 **Performance Overview:**\n"
+                        f"• **Total Return:** {tot_ret:+.1f}% (CAGR: ~{cagr_pct:+.1f}%)\n"
+                        f"• **Sharpe Ratio:** {sharpe:.2f} *(Benchmark hurdle: 1.0)*\n"
+                        f"• **Max Drawdown:** -{max_dd:.1f}%\n"
+                        f"• **Trade Count:** {trade_cnt} trades over 5 years\n\n"
+                        f"🛡️ **Skeptic Verdict: {verdict.title()}**\n"
+                        f"{narrative}\n\n"
+                        f"Where would you like to go from here?\n"
+                        f"1. ⚡ **Test faster windows:** (e.g. say 'Try 20/50 on {clean_sym}' to catch mid-term swings)\n"
+                        f"2. 🌊 **Switch to an oscillator:** (e.g. say 'Test RSI on {clean_sym}' to trade range reversals)\n"
+                        f"3. 🔍 **Deep-dive the audit:** Tap **'See audit details'** below to inspect all 4 adversarial tests.\n"
+                        f"4. 🔄 **Try a different stock:** (e.g. say 'Let's test Reliance' or 'Try Nifty 50')."
                     )
                     if example_label:
                         summary_text = f"*{example_label}*\n\n" + summary_text

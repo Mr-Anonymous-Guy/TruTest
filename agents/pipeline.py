@@ -90,6 +90,12 @@ def format_final_reply(
         verdict = audit.get("verdict", "Fragile").upper()
         lines.append(f"\nFINAL VERDICT: {verdict}")
 
+    clean_sym = ticker.replace(".NS", "").replace("^", "")
+    lines.append("\nWhere would you like to go from here?")
+    lines.append(f"  1. ⚡ Test faster windows: e.g. 'Try 20/50 on {clean_sym}'")
+    lines.append(f"  2. 🌊 Switch to an oscillator: e.g. 'Test RSI on {clean_sym}'")
+    lines.append(f"  3. 🔄 Try a different stock: e.g. 'Let's test Reliance' or 'Try Nifty 50'")
+
     lines.append("\nNote: Past performance is subject to survivorship and selection bias.")
     lines.append("'Trustworthy' means survived these tests, not that it will make money.")
     lines.append("Educational only, not investment advice.")

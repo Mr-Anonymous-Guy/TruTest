@@ -9,12 +9,41 @@ from __future__ import annotations
 
 # Greetings & Help
 WELCOME_GREETING = (
-    "🛡️ TrustTest is online!\n\n"
-    "• 💬 Chat naturally: Describe any trading strategy in plain English (e.g. 'Backtest 50/200 MA cross on RELIANCE.NS' or 'RSI 14 on TCS.NS').\n"
-    "• 🎛️ Custom inputs: Type 'form' or tap 'Open Form' in the carousel below to test your own custom parameters.\n"
-    "• 📊 Benchmarks: Select Demo A, B, or C below for instant verified examples.\n\n"
-    "I'll fetch real market data, run a lookahead-free backtest, and perform an adversarial Skeptic audit in real time. (Educational only, not investment advice.)"
+    "Hey there! 👋 I'm **TrustTest**.\n"
+    "I help traders stress-test their trading ideas against real market friction and statistical stress tests "
+    "to see if a strategy has true edge or is just overfitted to historical noise.\n\n"
+    "To get started, **what stock or index are we analyzing today?**\n"
+    "(e.g. HDFC Bank, Reliance, TCS, Infosys, Nifty 50, or Apple)"
 )
+
+# Market Context Snapshots for Popular Tickers
+TICKER_MARKET_SNAPSHOTS = {
+    "HDFCBANK.NS": (
+        "**HDFC Bank (HDFCBANK.NS)** — India's largest private lender and the anchor heavyweight of both the Nifty 50 (~11%) and Bank Nifty (~29%). 🏦\n\n"
+        "With immense institutional liquidity and tight bid-ask spreads, it's one of the cleanest instruments for quantitative backtesting because slippage is typically minimal. "
+        "Post its mega-merger with HDFC Ltd, it has traded in broad multi-month consolidation ranges punctuated by sharp trend legs."
+    ),
+    "RELIANCE.NS": (
+        "**Reliance Industries (RELIANCE.NS)** — India's highest-market-cap enterprise and Nifty 50 bellwether (~9-10% weight). ⚡\n\n"
+        "Driven by oil-to-chemicals, retail, and telecom (Jio), it exhibits strong trend persistence during capital expenditure and earnings cycles, making it classic territory for trend-following systems."
+    ),
+    "TCS.NS": (
+        "**Tata Consultancy Services (TCS.NS)** — Global IT services leader and defensive cash-flow compounder. 💻\n\n"
+        "Historically less volatile than broad markets, TCS frequently mean-reverts within defined valuation bands, making it an excellent candidate for oscillator and mean-reversion strategies like RSI."
+    ),
+    "INFY.NS": (
+        "**Infosys (INFY.NS)** — Premier Indian tech bellwether with high foreign institutional ownership. 🌐\n\n"
+        "More cyclical and higher-beta than TCS, Infosys experiences sharp quarterly reaction gaps and multi-month momentum runs based on global tech demand."
+    ),
+    "^NSEI": (
+        "**Nifty 50 Index (^NSEI)** — The benchmark gauge of the Indian equity market, representing 50 blue-chip companies across 13 sectors. 📈\n\n"
+        "With world-class liquidity and lower single-stock idiosyncratic risk, Nifty 50 is ideal for macro moving-average trend systems."
+    ),
+    "AAPL": (
+        "**Apple Inc. (AAPL)** — Global consumer tech titan and dominant component of the S&P 500 and Nasdaq-100. 🍏\n\n"
+        "Supported by consistent institutional inflows and aggressive share buyback programs, Apple exhibits long-term upward drift with shallow drawdowns."
+    ),
+}
 
 # Concurrency & Rate Limiting
 STILL_WORKING = (
